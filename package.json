@@ -1,0 +1,11 @@
+{
+  "name": "sqlite-for-rxdb",
+  "version": "0.1.0",
+  "description": "SQLite storage plugins for RxDB",
+  "author": "Pineapple Electric LLC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pineapple-electric/sqlite-for-rxdb"
+  },
+  "license": "AGPL-3.0-or-later"
+}

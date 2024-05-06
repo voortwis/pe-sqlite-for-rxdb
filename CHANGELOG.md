@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added ESLint for linting
+- Added lint-staged for processing staged files
+- Added Husky for pre-commit scripts
 - Added Prettier for formatting
 - Added TypeScript for minimal type-safety
 - Added Vite for compiling

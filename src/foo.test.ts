@@ -14,4 +14,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-export * from "./foo";
+import { describe, expect, it } from "vitest";
+import { bar } from "./foo";
+
+describe("foo tests", () => {
+  it("adds 5 to the first argument", () => {
+    expect(bar(5)).toBe(10);
+  });
+});

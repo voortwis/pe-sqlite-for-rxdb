@@ -14,4 +14,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-export * from "./foo";
+export function bar(in_: number): number {
+  // Comment
+  return in_ + 5;
+  // More comment
+}

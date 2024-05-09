@@ -1,4 +1,4 @@
-# SQLite for RxDB
+# Pineapple Electric SQLite RxStorage for RxDB
 
 This package contains plugins for RxDB which store RxDocuments in SQLite.
 

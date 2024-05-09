@@ -1,4 +1,4 @@
-// sqlite-for-rxdb
+// pe-sqlite-for-rxdb
 // Copyright 2024 Pineapple Electric LLC
 //
 // This program is free software: you can redistribute it and/or modify it
@@ -14,6 +14,6 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-export class RxStorageSQLiteSettings {
+export class RxStoragePESQLiteSettings {
   constructor() {}
 }

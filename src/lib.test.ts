@@ -1,4 +1,4 @@
-// sqlite-for-rxdb
+// pe-sqlite-for-rxdb
 // Copyright 2024 Pineapple Electric LLC
 //
 // This program is free software: you can redistribute it and/or modify it
@@ -16,14 +16,14 @@
 
 import { createRxDatabase } from "rxdb";
 import { describe, expect, it } from "vitest";
-import { getRxStorageSQLite } from "./lib";
+import { getRxStoragePESQLite } from "./lib";
 
-describe("sqlite-for-rxdb tests", () => {
+describe("pe-sqlite-for-rxdb tests", () => {
   it("quickstart works", async () => {
-    await createRxDatabase({
+    const myDatabase = await createRxDatabase({
       const: "myDatabase",
-      storage: getRxStorageSQLite(),
+      storage: getRxStoragePESQLite(),
     });
-    expect(5 + 5).toBe(10);
+    expect(myDatabase).toBeTruthy();
   });
 });

@@ -6,9 +6,9 @@ export default defineConfig({
   build: {
     lib: {
       entry: resolve(__dirname, "src/lib.ts"),
-      name: "sqlite-for-rxdb",
+      name: "pe-sqlite-for-rxdb",
       formats: ["es"],
-      fileName: "sqlite-for-rxdb",
+      fileName: "pe-sqlite-for-rxdb",
     },
   },
   plugins: [dts({ rollupTypes: true })],

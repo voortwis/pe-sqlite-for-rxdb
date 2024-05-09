@@ -1,4 +1,4 @@
-// sqlite-for-rxdb
+// pe-sqlite-for-rxdb
 // Copyright 2024 Pineapple Electric LLC
 //
 // This program is free software: you can redistribute it and/or modify it
@@ -14,23 +14,24 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import type { RxStorageSQLiteInstance } from "./storage-instance";
-import { RXDB_VERSION } from 'rxdb';
-import { createRxStorageSQLiteInstance } from "./storage-instance";
+import type { RxStoragePESQLiteInstance } from "./storage-instance";
+
+import { RXDB_VERSION } from "rxdb";
+import { createRxStoragePESQLiteInstance } from "./storage-instance";
 
 export const RxStorageName = "Pineapple Electric SQLite RxStorage for RxDB";
 
-export class RxStorageSQLite {
+export class RxStoragePESQLite {
   constructor(
     public readonly name = RxStorageName,
     public readonly rxdbVersion = RXDB_VERSION,
   ) {}
 
-  createStorageInstance(): RxStorageSQLiteInstance {
-    return createRxStorageSQLiteInstance();
+  createStorageInstance(): RxStoragePESQLiteInstance {
+    return createRxStoragePESQLiteInstance();
   }
 }
 
-export function getRxStorageSQLite(): RxStorageSQLite {
-  return new RxStorageSQLite();
+export function getRxStoragePESQLite(): RxStoragePESQLite {
+  return new RxStoragePESQLite();
 }

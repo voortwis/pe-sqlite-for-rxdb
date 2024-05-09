@@ -1,4 +1,4 @@
-// sqlite-for-rxdb
+// pe-sqlite-for-rxdb
 // Copyright 2024 Pineapple Electric LLC
 //
 // This program is free software: you can redistribute it and/or modify it

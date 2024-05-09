@@ -1,17 +1,17 @@
 {
-  "name": "sqlite-for-rxdb",
+  "name": "pe-sqlite-for-rxdb",
   "version": "0.1.0",
-  "description": "SQLite storage plugins for RxDB",
+  "description": "Pineapple Electric SQLite RxStorage for RxDB",
   "author": "Pineapple Electric LLC",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pineapple-electric/sqlite-for-rxdb"
+    "url": "https://github.com/pineapple-electric/pe-sqlite-for-rxdb"
   },
   "license": "AGPL-3.0-or-later",
   "exports": {
     ".": {
-      "default": "./dist/sqlite-for-rxdb.js",
-      "types": "./dist/sqlite-for-rxdb.d.ts"
+      "default": "./dist/pe-sqlite-for-rxdb.js",
+      "types": "./dist/pe-sqlite-for-rxdb.d.ts"
     }
   },
   "devDependencies": {
@@ -32,7 +32,7 @@
     "rxdb": "^15.19.0"
   },
   "scripts": {
-    "clean": "rimraf dist sqlite-for-rxdb-*.tgz",
+    "clean": "rimraf dist pe-sqlite-for-rxdb-*.tgz",
     "dist": "tsc && vite build",
     "format": "prettier --write .",
     "lint": "eslint",
@@ -43,8 +43,8 @@
   "files": [
     "COPYING",
     "README.md",
-    "dist/sqlite-for-rxdb.d.ts",
-    "dist/sqlite-for-rxdb.js",
+    "dist/pe-sqlite-for-rxdb.d.ts",
+    "dist/pe-sqlite-for-rxdb.js",
     "package.json"
   ]
 }

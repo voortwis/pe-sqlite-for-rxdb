@@ -1,6 +1,6 @@
 # Build artifacts
 dist/
-sqlite-for-rxdb-*.tgz
+pe-sqlite-for-rxdb-*.tgz
 
 # Logs
 logs

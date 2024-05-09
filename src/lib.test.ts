@@ -14,7 +14,16 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-export * from "./storage";
-export * from "./storage-instance";
-export * from "./storage-instance-options";
-export * from "./storage-settings";
+import { createRxDatabase } from "rxdb";
+import { describe, expect, it } from "vitest";
+import { getRxStorageSQLite } from "./lib";
+
+describe("sqlite-for-rxdb tests", () => {
+  it("quickstart works", async () => {
+    await createRxDatabase({
+      const: "myDatabase",
+      storage: getRxStorageSQLite(),
+    });
+    expect(5 + 5).toBe(10);
+  });
+});

@@ -14,11 +14,23 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import { describe, expect, it } from "vitest";
-import { bar } from "./foo";
+import type { RxStorageSQLiteInstance } from "./storage-instance";
+import { RXDB_VERSION } from 'rxdb';
+import { createRxStorageSQLiteInstance } from "./storage-instance";
 
-describe("foo tests", () => {
-  it("adds 5 to the first argument", () => {
-    expect(bar(5)).toBe(10);
-  });
-});
+export const RxStorageName = "Pineapple Electric SQLite RxStorage for RxDB";
+
+export class RxStorageSQLite {
+  constructor(
+    public readonly name = RxStorageName,
+    public readonly rxdbVersion = RXDB_VERSION,
+  ) {}
+
+  createStorageInstance(): RxStorageSQLiteInstance {
+    return createRxStorageSQLiteInstance();
+  }
+}
+
+export function getRxStorageSQLite(): RxStorageSQLite {
+  return new RxStorageSQLite();
+}

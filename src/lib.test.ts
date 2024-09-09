@@ -52,11 +52,13 @@ describe("pe-sqlite-for-rxdb tests", () => {
       required: ["id", "name", "done", "timestamp"],
     };
 
+    expect(myDatabase.todos).toBeFalsy();
     // Adding an RxCollection to the RxDatabase
     await myDatabase.addCollections({
       todos: {
         schema: todoSchema,
       },
     });
+    expect(myDatabase.todos).toBeTruthy();
   });
 });

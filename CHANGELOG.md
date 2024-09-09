@@ -18,3 +18,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added Vitest for testing
 - Added enough code so that `createRxDatabase()` succeeds
 - Added "PE" prefix to prevent confusion: SQLite -> PESQLite
+- Added enough code so that `addCollections()` does not error

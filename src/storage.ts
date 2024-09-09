@@ -14,21 +14,46 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import type { RxStoragePESQLiteInstance } from "./storage-instance";
+import type {
+  RxStorage,
+  RxStorageInstance,
+  RxStorageInstanceCreationParams,
+} from "rxdb";
+import type { RxStoragePESQLiteCheckpoint } from "./storage-checkpoint";
+import type { RxStoragePESQLiteInternals } from "./storage-internals";
+import type { RxStoragePESQLiteInstanceCreationOptions } from "./storage-instance-options";
 
 import { RXDB_VERSION } from "rxdb";
 import { createRxStoragePESQLiteInstance } from "./storage-instance";
 
 export const RxStorageName = "Pineapple Electric SQLite RxStorage for RxDB";
 
-export class RxStoragePESQLite {
+export class RxStoragePESQLite
+  implements
+    RxStorage<
+      RxStoragePESQLiteInternals,
+      RxStoragePESQLiteInstanceCreationOptions
+    >
+{
   constructor(
     public readonly name = RxStorageName,
     public readonly rxdbVersion = RXDB_VERSION,
   ) {}
 
-  createStorageInstance(): RxStoragePESQLiteInstance {
-    return createRxStoragePESQLiteInstance();
+  createStorageInstance<RxDocType>(
+    params: RxStorageInstanceCreationParams<
+      RxDocType,
+      RxStoragePESQLiteInstanceCreationOptions
+    >,
+  ): Promise<
+    RxStorageInstance<
+      RxDocType,
+      RxStoragePESQLiteInternals,
+      RxStoragePESQLiteInstanceCreationOptions,
+      RxStoragePESQLiteCheckpoint
+    >
+  > {
+    return createRxStoragePESQLiteInstance(params);
   }
 }
 

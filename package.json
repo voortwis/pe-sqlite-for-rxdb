@@ -29,13 +29,14 @@
     "vitest": "^1.6.0"
   },
   "peerDependencies": {
-    "rxdb": "^15.19.0"
+    "rxdb": "^15.19.0",
+    "rxjs": "^7.8.0"
   },
   "scripts": {
     "clean": "rimraf dist pe-sqlite-for-rxdb-*.tgz",
     "dist": "tsc && vite build",
     "format": "prettier --write .",
-    "lint": "eslint",
+    "lint": "eslint && tsc --noEmit",
     "prepare": "husky",
     "test": "vitest --run --typecheck"
   },

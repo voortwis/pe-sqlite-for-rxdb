@@ -29,10 +29,18 @@ import type {
   RxStorageWriteError,
   RxStorageBulkWriteResponse,
   RxStorageInstanceCreationParams,
+  StringKeys,
 } from "rxdb";
 import type { Observable } from "rxjs";
+import type {
+  RxStoragePESQLiteImpl,
+  RxStoragePESQLiteImplOptions,
+} from "./storage-impl";
 import type { RxStoragePESQLiteInstanceCreationOptions } from "./storage-instance-options";
+import type { RxStoragePESQLiteOptions } from "./storage-options";
+import type { DocumentIdGetter } from "./types";
 
+import { getPrimaryFieldOfPrimaryKey } from "rxdb";
 import { Subject } from "rxjs";
 import { RxStoragePESQLiteCheckpoint } from "./storage-checkpoint";
 import { RxStoragePESQLiteInternals } from "./storage-internals";
@@ -42,6 +50,12 @@ interface NotRxStorageChangedDocumentsSinceResult<RxDocType, CheckpointType> {
   checkpoint: CheckpointType;
 }
 
+/**
+ * RxStoragePESQLiteInstance provides the interface between an RxDB collection
+ * and a storage provider.  This means that several instances of this class
+ * exist, sharing the same underlying RxStoragePESQLiteInternals (which maps to
+ * an RxStoragePESQLiteImpl).
+ */
 export class RxStoragePESQLiteInstance<RxDocType>
   implements
     RxStorageInstance<
@@ -54,6 +68,13 @@ export class RxStoragePESQLiteInstance<RxDocType>
   private changes$: Subject<
     EventBulk<RxStorageChangeEvent<RxDocType>, RxStoragePESQLiteCheckpoint>
   > = new Subject();
+  private conflicts$: Subject<RxConflictResultionTask<RxDocType>> =
+    new Subject();
+  private primaryField: StringKeys<RxDocumentData<RxDocType>>;
+  private userKey: number = 0; // Used by the internals instance.
+
+  readonly filename: string;
+  readonly implOptions: Partial<RxStoragePESQLiteImplOptions>;
 
   public closed?: Promise<void>;
 
@@ -63,26 +84,89 @@ export class RxStoragePESQLiteInstance<RxDocType>
     readonly internals: Readonly<RxStoragePESQLiteInternals>,
     readonly options: Readonly<RxStoragePESQLiteInstanceCreationOptions>,
     readonly schema: Readonly<RxJsonSchema<RxDocumentData<RxDocType>>>,
-  ) {}
+  ) {
+    this.filename = this.getFilename();
+    this.implOptions = {};
+    this.primaryField = getPrimaryFieldOfPrimaryKey(schema.primaryKey);
 
-  bulkWrite(
+    this.internals.then(
+      (impl: RxStoragePESQLiteImpl) => {
+        impl.init(this.filename, this.implOptions, collectionName).then(
+          (userKey: number) => {
+            this.userKey = userKey;
+          },
+          (reason?: unknown) => {
+            console.log(`Failed to initialize SQLite database: ${reason}`);
+            throw reason;
+          },
+        );
+      },
+      (reason?: Error) => {
+        console.log(`Failed to get SQLite internals: ${reason}`);
+        throw reason;
+      },
+    );
+  }
+
+  async bulkWrite(
     documentWrites: BulkWriteRow<RxDocType>[],
     context: string,
   ): Promise<RxStorageBulkWriteResponse<RxDocType>> {
-    const errors: RxStorageWriteError<RxDocType>[] = [];
+    console.log(
+      `bulkWrite(${documentWrites}, ${context}, collection=${this.collectionName})`,
+    );
+    const error: RxStorageWriteError<RxDocType>[] = [];
+    // success will go away in a later version of the interface.
+    const success: RxDocumentData<RxDocType>[] = [];
+    const getDocumentId: DocumentIdGetter<RxDocType> = (
+      document: RxDocumentData<RxDocType>,
+    ) => document[this.primaryField];
+
+    const internals = await this.internals;
+
+    if (
+      context === "rx-database-add-collection" &&
+      documentWrites.length === 1
+    ) {
+      const addCollectionResult = await internals.addCollection<RxDocType>(
+        this.collectionName,
+        getDocumentId,
+        documentWrites,
+      );
+      return Promise.resolve(addCollectionResult);
+    } else if (
+      context === "internal-add-storage-token" ||
+      context === "rx-collection-bulk-insert" ||
+      context === "rx-database-remove-collection-all"
+    ) {
+      const bulkWriteResult = await internals.bulkWrite<RxDocType>(
+        this.collectionName,
+        getDocumentId,
+        documentWrites,
+      );
+      return Promise.resolve(bulkWriteResult);
+    } else {
+      console.log(
+        `Unhandled context (${context}) for collection (${this.collectionName})`,
+      );
+    }
+
     return Promise.resolve({
-      error: errors,
+      success,
+      error,
     });
   }
 
   changeStream(): Observable<
     EventBulk<RxStorageChangeEvent<RxDocType>, RxStoragePESQLiteCheckpoint>
   > {
+    console.log(`changeStream(collection=${this.collectionName})`);
     return this.changes$.asObservable();
   }
 
   // Garbage collection of deleted documents
   cleanup(_minimumDeletedTimeInMilliseconds: number): Promise<boolean> {
+    console.log(`Unhandled cleanup() for collection (${this.collectionName})`);
     return Promise.resolve(true);
   }
 
@@ -92,18 +176,20 @@ export class RxStoragePESQLiteInstance<RxDocType>
     }
     this.closed = (async () => {
       this.changes$.complete();
-      await this.internals.close();
+      await (await this.internals).close(this.userKey);
+      this.userKey = 0;
     })();
     return this.closed;
   }
 
   conflictResultionTasks(): Observable<RxConflictResultionTask<RxDocType>> {
-    return new Subject();
+    return this.conflicts$;
   }
 
   count(
     _preparedQuery: PreparedQuery<RxDocType>,
   ): Promise<RxStorageCountResult> {
+    console.log(`Unhandled count() for collection (${this.collectionName})`);
     return Promise.resolve({
       count: 0,
       mode: "fast",
@@ -114,6 +200,9 @@ export class RxStoragePESQLiteInstance<RxDocType>
     _ids: string[],
     _withDeleted: boolean,
   ): Promise<RxDocumentData<RxDocType>[]> {
+    console.log(
+      `Unhandled findDocumentsById() for collection (${this.collectionName})`,
+    );
     return Promise.resolve([]);
   }
 
@@ -122,6 +211,9 @@ export class RxStoragePESQLiteInstance<RxDocType>
     _attachmentId: string,
     _digest: string,
   ): Promise<string> {
+    console.log(
+      `Unhandled getAttachmentData() for collection (${this.collectionName})`,
+    );
     return Promise.resolve("");
   }
 
@@ -134,29 +226,50 @@ export class RxStoragePESQLiteInstance<RxDocType>
       RxStoragePESQLiteCheckpoint
     >
   > {
+    console.log(
+      `Unhandled getChangedDocumentsSince() for collection (${this.collectionName})`,
+    );
     return Promise.resolve({
       documents: [],
       checkpoint: new RxStoragePESQLiteCheckpoint("hello", 123.0),
     });
   }
 
-  query(
-    _preparedQuery: PreparedQuery<RxDocType>,
+  async query(
+    preparedQuery: PreparedQuery<RxDocType>,
   ): Promise<RxStorageQueryResult<RxDocType>> {
-    return Promise.resolve({
-      documents: [],
-    });
+    const internals = await this.internals;
+
+    return internals
+      .query(this.collectionName, preparedQuery)
+      .then((result) => {
+        console.log("Query:");
+        console.dir(preparedQuery.query, { depth: null });
+        console.log("Query plan:");
+        console.dir(preparedQuery.queryPlan, { depth: null });
+        console.log("Query result:");
+        console.dir(result, { depth: null });
+        return result;
+      });
   }
 
-  // Delete the database.
+  // Delete the storage instance for this collection.
+  // This will not necessarily remove the underlying SQLite3 database.
   async remove(): Promise<void> {
-    // FIXME: Remove the database.
+    return (await this.internals).removeCollection(this.collectionName);
+  }
+
+  resolveConflictResultionTask(
+    _taskSolution: RxConflictResultionTaskSolution<RxDocType>,
+  ): Promise<void> {
+    throw new Error(
+      `Not Implemented: resolveConflictResultionTask() for collection ${this.collectionName}`,
+    );
     return Promise.resolve();
   }
-  resolveConflictResultionTask(
-    taskSolution: RxConflictResultionTaskSolution<RxDocType>,
-  ): Promise<void> {
-    return Promise.resolve();
+
+  private getFilename(): string {
+    return this.databaseName + ".sqlite";
   }
 }
 
@@ -165,11 +278,11 @@ export function createRxStoragePESQLiteInstance<RxDocType>(
     RxDocType,
     RxStoragePESQLiteInstanceCreationOptions
   >,
+  options: RxStoragePESQLiteOptions,
 ): Promise<RxStoragePESQLiteInstance<RxDocType>> {
   const collectionName = params.collectionName;
   const databaseName = params.databaseName;
-  const internals = new RxStoragePESQLiteInternals();
-  const options = params.options;
+  const internals = options.sqliteInternals;
   const schema = params.schema;
 
   return Promise.resolve(

@@ -14,10 +14,23 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-export * from "./storage";
-export * from "./storage-impl";
-export * from "./storage-impl-better-sqlite3";
-export * from "./storage-instance";
-export * from "./storage-instance-options";
-export * from "./storage-internals";
-export * from "./storage-options";
+import type { RxStorageBulkWriteResponse } from "rxdb";
+
+export class RxStoragePESQLiteQueryBuilder<RxDocType> {
+  private _whereClause?: string;
+
+  constructor(readonly preparedQuery: PreparedQuery<RxDocType>) {}
+
+  get whereClause(): string {
+    if (this._whereClause) {
+      return this._whereClause;
+    }
+    this.buildWhereClause();
+    return this._whereClause;
+  }
+
+  private buildWhereClause() {
+    this._whereClause =
+      "WHERE deleted = 0 AND context = 'collection' ORDER BY id ASC";
+  }
+}

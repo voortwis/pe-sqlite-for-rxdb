@@ -14,6 +14,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-export class RxStoragePESQLiteSettings {
-  constructor() {}
-}
+import type {
+  RxDocumentData,
+  StringKeys,
+} from "rxdb";
+
+export type DocumentIdGetter<RxDocType> = (document: RxDocumentData<RxDocType>) => RxDocumentData<RxDocType>[StringKeys<RxDocumentData<RxDocType>>];

@@ -20,11 +20,13 @@ import type {
   RxStorageInstanceCreationParams,
 } from "rxdb";
 import type { RxStoragePESQLiteCheckpoint } from "./storage-checkpoint";
-import type { RxStoragePESQLiteInternals } from "./storage-internals";
 import type { RxStoragePESQLiteInstanceCreationOptions } from "./storage-instance-options";
+import type { RxStoragePESQLiteInternals } from "./storage-internals";
+import type { RxStoragePESQLiteOptions } from "./storage-options";
 
 import { RXDB_VERSION } from "rxdb";
 import { createRxStoragePESQLiteInstance } from "./storage-instance";
+import { getRxStoragePESQLiteOptionsWithPartial } from "./storage-options";
 
 export const RxStorageName = "Pineapple Electric SQLite RxStorage for RxDB";
 
@@ -35,10 +37,9 @@ export class RxStoragePESQLite
       RxStoragePESQLiteInstanceCreationOptions
     >
 {
-  constructor(
-    public readonly name = RxStorageName,
-    public readonly rxdbVersion = RXDB_VERSION,
-  ) {}
+  public readonly name = RxStorageName;
+  public readonly rxdbVersion = RXDB_VERSION;
+  constructor(public readonly options: RxStoragePESQLiteOptions) {}
 
   createStorageInstance<RxDocType>(
     params: RxStorageInstanceCreationParams<
@@ -53,10 +54,18 @@ export class RxStoragePESQLite
       RxStoragePESQLiteCheckpoint
     >
   > {
-    return createRxStoragePESQLiteInstance(params);
+    return createRxStoragePESQLiteInstance(params, this.options);
+  }
+
+  async whichBackend(): Promise<string> {
+    const internals = await this.options.sqliteInternals;
+    return internals.whichBackend();
   }
 }
 
-export function getRxStoragePESQLite(): RxStoragePESQLite {
-  return new RxStoragePESQLite();
+export function getRxStoragePESQLite(
+  options: Partial<RxStoragePESQLiteOptions> = {},
+): RxStoragePESQLite {
+  const allOptions = getRxStoragePESQLiteOptionsWithPartial(options);
+  return new RxStoragePESQLite(allOptions);
 }

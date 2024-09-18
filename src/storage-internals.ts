@@ -14,9 +14,17 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-export class RxStoragePESQLiteInternals {
-  constructor() {}
-  close(): Promise<void> {
-    return Promise.resolve();
-  }
+import type { RxStoragePESQLiteImpl } from "./storage-impl";
+import { getDefaultSQLiteImpl } from "./storage-impl";
+
+export type RxStoragePESQLiteInternals = Promise<RxStoragePESQLiteImpl>;
+
+export async function getDefaultSQLiteInternals(): RxStoragePESQLiteInternals {
+  return getDefaultSQLiteImpl();
+}
+
+export function getInternalsWithImpl(
+  impl: RxStoragePESQLiteImpl,
+): RxStoragePESQLiteInternals {
+  return Promise.resolve(impl);
 }

@@ -18,23 +18,21 @@ import type {
   BulkWriteRow,
   PreparedQuery,
   RxDocumentData,
+  RxJsonSchema,
   RxStorageQueryResult,
   RxStorageWriteError,
+  RxStorageWriteErrorConflict,
   RxStorageBulkWriteResponse,
 } from "rxdb";
-import type {
-  RxStoragePESQLiteImpl,
-  RxStoragePESQLiteImplOptions,
-} from "./storage-impl";
-import type {
-  DocumentIdGetter,
-} from "./types";
+import type { RxStoragePESQLiteImpl } from "./storage-impl";
+import type { DocumentIdGetter } from "./types";
 
+import { default as path } from "node:path";
 import {
   default as openDatabase,
   Database as DatabaseInterface,
-  Options as DatabaseOptions,
 } from "better-sqlite3";
+import { defaultHashSha256 } from "rxdb";
 import { RxStoragePESQLiteQueryBuilder } from "./query-sqlite3";
 
 const RXDB_INTERNAL_TABLE = "_rxdb_internal";
@@ -42,7 +40,7 @@ const RXDB_INTERNAL_TABLE = "_rxdb_internal";
 interface SqliteError extends Error {
   name: string;
   message: string;
-  code: "SQLITE_ERROR";
+  code: "SQLITE_ERROR" | "SQLITE_CONSTRAINT_PRIMARYKEY";
 }
 
 function isSqliteError(probableError: unknown): probableError is SqliteError {
@@ -54,13 +52,31 @@ function isSqliteError(probableError: unknown): probableError is SqliteError {
   );
 }
 
+export interface RxStoragePESQLiteImpleBetterSQLite3Options {
+  fileMustExist?: boolean;
+  nativeBinding?: string;
+  readonly?: boolean;
+  timeout?: number;
+  verbose?: (message: unknown, ...additionalArgs: unknown[]) => void;
+}
+
 export class RxStoragePESQLiteImplBetterSQLite3
   implements RxStoragePESQLiteImpl
 {
-  private connection?: DatabaseInterface;
+  private _connection?: DatabaseInterface;
+  private queryBuilders: Map<string, RxStoragePESQLiteQueryBuilder<any>> =
+    new Map();
   private userMap: Map<number, string> = new Map();
 
-  constructor(private readonly databaseOptions: DatabaseOptions) {}
+  /**
+   * If fileName is provided, the database file is opened immediately.
+   * If not, the database file is opened when a database name is received (via
+   * init()) from the RxStorageInstance.
+   */
+  constructor(
+    public fileName?: string,
+    private options?: RxStoragePESQLiteImpleBetterSQLite3Options,
+  ) {}
 
   async addCollection<RxDocType>(
     collectionName: string,
@@ -68,7 +84,6 @@ export class RxStoragePESQLiteImplBetterSQLite3
     bulkWrites: BulkWriteRow<RxDocType>[],
   ): Promise<RxStorageBulkWriteResponse<RxDocType>> {
     try {
-      this.throwIfNoConnection();
       if (bulkWrites.length !== 1) {
         throw new Error("addCollection() should only insert one document");
       }
@@ -78,18 +93,16 @@ export class RxStoragePESQLiteImplBetterSQLite3
         getDocumentId,
         bulkWrites,
       );
-      if (
-        bulkWriteResult.success.length == 0 &&
-        bulkWriteResult.error.length == 1
-      ) {
+      if (bulkWriteResult.error.length == 1) {
         return Promise.resolve(bulkWriteResult);
       }
       const collectionDocument = bulkWrites[0].document;
-      const collectionTableName = this.getTableNameWithCollectionName(
+      // FIXME: Get the collection name some other way.
+      const collectionTableName = this.tableNameWithCollectionName(
         collectionDocument.data.name,
       );
       createDocumentTableAndIndexsWithTableName(
-        this.connection,
+        this.connection(),
         collectionTableName,
       );
 
@@ -101,17 +114,15 @@ export class RxStoragePESQLiteImplBetterSQLite3
 
   bulkWrite<RxDocType>(
     collectionName: string,
-    getDocumentId: (document: RxDocumentData<RxDocType>) => string,
+    getDocumentId: DocumentIdGetter<RxDocType>,
     bulkWrites: BulkWriteRow<RxDocType>[],
   ): Promise<RxStorageBulkWriteResponse<RxDocType>> {
     try {
-      this.throwIfNoConnection();
+      const connection = this.connection();
 
       const error: RxStorageWriteError<RxDocType>[] = [];
       const hasContextColumn = collectionName == RXDB_INTERNAL_TABLE;
-      // success will go away in a later version of the interface.
-      const success: RxDocumentData<RxDocType>[] = [];
-      const tableName = this.getTableNameWithCollectionName(collectionName);
+      const tableName = this.tableNameWithCollectionName(collectionName);
 
       for (let writeIndex = 0; writeIndex < bulkWrites.length; writeIndex++) {
         const currentWrite = bulkWrites[writeIndex];
@@ -143,7 +154,7 @@ export class RxStoragePESQLiteImplBetterSQLite3
         ].join("");
         const sqlString1 =
           sqlPart1 + (previousVersionOfDocument ? sqlPart2 : "");
-        const sql1 = this.connection.prepare(sqlString1);
+        const sql1 = connection.prepare(sqlString1);
         const insertArgs = [
           getDocumentId(newVersionOfDocument),
           JSON.stringify(newVersionOfDocument),
@@ -152,6 +163,7 @@ export class RxStoragePESQLiteImplBetterSQLite3
           Math.floor(newVersionOfDocument._meta.lwt),
         ];
         if (hasContextColumn) {
+          // FIXME: Is there a type safe way to do this?
           insertArgs.push(newVersionOfDocument.context);
         }
         if (previousVersionOfDocument) {
@@ -159,10 +171,8 @@ export class RxStoragePESQLiteImplBetterSQLite3
         }
         try {
           const insertResult = sql1.run(insertArgs);
-          if (insertResult.changes === 1) {
-            success.push(newVersionOfDocument);
-          } else {
-            throw new Error(insertResult);
+          if (insertResult.changes !== 1) {
+            throw new Error("Failed to insert document in SQLite database");
           }
         } catch (err: unknown) {
           if (isSqliteError(err)) {
@@ -176,16 +186,19 @@ export class RxStoragePESQLiteImplBetterSQLite3
                 `SELECT json(jsonb) AS json FROM ${tableName}\n`,
                 "WHERE id = ?",
               ].join("");
-              const sql2 = this.connection.prepare(sqlString2);
-              const result2 = sql2.get([getDocumentId(newVersionOfDocument)]);
+              const sql2 = connection.prepare(sqlString2);
+              const result2 = sql2.get([
+                getDocumentId(newVersionOfDocument),
+              ]) as { json: string };
               const documentInDb = JSON.parse(result2.json);
               const conflict = {
-                status: 409, // conflict
-                isError: true,
+                attachmentId: "",
                 documentId: getDocumentId(newVersionOfDocument),
-                writeRow: currentWrite,
                 documentInDb: documentInDb,
-              };
+                isError: true,
+                status: 409, // conflict
+                writeRow: currentWrite,
+              } as RxStorageWriteErrorConflict<RxDocType>;
               error.push(conflict);
             } else {
               throw err;
@@ -196,7 +209,6 @@ export class RxStoragePESQLiteImplBetterSQLite3
         }
       }
       return Promise.resolve({
-        success,
         error,
       });
     } catch (err: unknown) {
@@ -205,28 +217,26 @@ export class RxStoragePESQLiteImplBetterSQLite3
   }
 
   close(userKey: number): Promise<void> {
-    const collectionName: string = this.userMap.get(userKey);
+    const collectionName: string | undefined = this.userMap.get(userKey);
     if (collectionName) {
       this.userMap.delete(userKey);
       const stillInUse = !!Array.from(this.userMap.keys()).length;
       if (stillInUse) {
         return Promise.resolve();
       }
-      this.connection.close();
-      this.connection = undefined;
+      if (this._connection) {
+        this._connection.close();
+        this._connection = undefined;
+      }
       return Promise.resolve();
     } else {
       return Promise.reject(`close() called with invalid userKey: ${userKey}`);
     }
   }
 
-  init(
-    filename: string,
-    options: Partial<RxStoragePESQLiteImplOptions>,
-    collectionName: string,
-  ): Promise<number> {
+  init(databaseName: string, collectionName: string): Promise<number> {
     try {
-      this.connect(filename, options);
+      this.connectWithDatabaseName(databaseName);
       this.configureSQLite();
       this.initializeDatabase();
       const userKey = Date.now();
@@ -237,42 +247,35 @@ export class RxStoragePESQLiteImplBetterSQLite3
     }
   }
 
-  query<RxDocType>(
+  async query<RxDocType>(
     collectionName: string,
+    collectionSchema: RxJsonSchema<RxDocumentData<RxDocType>>,
     preparedQuery: PreparedQuery<RxDocType>,
   ): Promise<RxStorageQueryResult<RxDocType>> {
-    try {
-      this.throwIfNoConnection();
-
-      const tableName = this.getTableNameWithCollectionName(collectionName);
-      const queryBuilder = new RxStoragePESQLiteQueryBuilder(preparedQuery);
-      const whereClause = queryBuilder.whereClause;
-      const sql1 = this.connection.prepare(
-        [
-          "SELECT id, json(jsonb) AS json, deleted, rev, mtime_ms\n",
-          `FROM ${tableName}\n`,
-          whereClause,
-        ].join(""),
-      );
-      const result1: Array<{json: string}> = sql1.all([]);
-      const resultingDocuments = result1.map((value) => {
-        return JSON.parse(value.json);
-      });
-      return Promise.resolve({
-        documents: resultingDocuments,
-      });
-    } catch (err: unknown) {
-      return Promise.reject(err);
-    }
+    const tableName = this.tableNameWithCollectionName(collectionName);
+    const queryBuilder =
+      await this.queryBuilderWithCollectionSchema(collectionSchema);
+    const queryAndArgs =
+      queryBuilder.queryAndArgsWithPreparedQuery(preparedQuery);
+    const sql1 = this.connection().prepare(
+      [
+        "SELECT id, json(jsonb) AS json, deleted, rev, mtime_ms\n",
+        `FROM ${tableName}\n`,
+        queryAndArgs.query,
+      ].join(""),
+    );
+    const result1 = sql1.all(queryAndArgs.args) as Array<{ json: string }>;
+    const resultingDocuments = result1.map((value) => {
+      return JSON.parse(value.json);
+    });
+    return { documents: resultingDocuments };
   }
 
   removeCollection(collectionName: string): Promise<void> {
     // Drop the collection_collectionName table.
-    this.throwIfNoConnection();
-
-    const tableName = this.getTableNameWithCollectionName(collectionName);
+    const tableName = this.tableNameWithCollectionName(collectionName);
     try {
-      const sql1 = this.connection.prepare(`DROP TABLE ${tableName};`);
+      const sql1 = this.connection().prepare(`DROP TABLE ${tableName};`);
       sql1.run([]);
       return Promise.resolve();
     } catch (err: unknown) {
@@ -284,20 +287,50 @@ export class RxStoragePESQLiteImplBetterSQLite3
     return "better-sqlite3";
   }
 
-  private connect(
-    filename: string,
-    options: Partial<RxStoragePESQLiteImplOptions>,
-  ) {
-    this.connection = openDatabase(filename, options);
+  private configureSQLite(): void {
+    this.connection().pragma("journal_mode = WAL");
+  }
+
+  private connectWithDatabaseName(databaseName: string) {
+    const fileName = this.fileNameWithDatabaseNameOrThrow(databaseName);
+    this._connection = openDatabase(fileName, this.options);
+  }
+
+  private connection(): DatabaseInterface {
+    if (!this._connection || !this._connection.open) {
+      throw new Error("No database connection");
+    }
+    return this._connection;
+  }
+
+  /**
+   * Return a filename which matches the databaseName if no filename has been
+   * specified.  Throw an Error if the databaseName ( + '.sqlite3') does not
+   * correspond to the provided filename.
+   */
+  private fileNameWithDatabaseNameOrThrow(databaseName: string): string {
+    const result = databaseName + ".sqlite3";
+    if (this.fileName === undefined) {
+      this.fileName = result;
+    } else {
+      const baseName = path.basename(this.fileName, ".sqlite3");
+      if (baseName !== databaseName) {
+        const baseNamePlusExt = path.basename(this.fileName);
+        throw new Error(
+          `Database name ${databaseName} + .sqlite3 must match the filename ${baseNamePlusExt}`,
+        );
+      }
+    }
+    return result;
   }
 
   private initializeDatabase(): void {
-    if (!this.connection) {
-      throw new Error("No database connection");
-    }
-    const userVersionResult: unknown = this.connection.pragma("user_version", {
-      simple: true,
-    });
+    const userVersionResult: unknown = this.connection().pragma(
+      "user_version",
+      {
+        simple: true,
+      },
+    );
     if (typeof userVersionResult === "number") {
       const userVersion: number = userVersionResult;
       console.log(`Current schema version: ${userVersion}`);
@@ -311,14 +344,38 @@ export class RxStoragePESQLiteImplBetterSQLite3
     }
   }
 
-  private configureSQLite(): void {
-    if (!this.connection) {
-      throw new Error("No database connection");
-    }
-    this.connection.pragma("journal_mode = WAL");
+  private migration0001(): void {
+    createDocumentTableAndIndexsWithTableName(
+      this.connection(),
+      RXDB_INTERNAL_TABLE,
+      true,
+    );
+    this.connection().pragma("user_version = 1");
   }
 
-  private getTableNameWithCollectionName(collectionName: string): string {
+  /**
+   * Because one RxStoragePESQLiteImpl can be used by multiple
+   * RxStoragePESQLiteInstances and the RxStoragePESQLiteQueryBuilder is
+   * specific to a RxJsonSchema<RxDocType> (a.k.a. a collection's schema), the
+   * RxStoragePESQLiteImple must handle multiple
+   * RxStoragePESQLiteQueryBuilders.
+   */
+  private async queryBuilderWithCollectionSchema<RxDocType>(
+    collectionSchema: RxJsonSchema<RxDocumentData<RxDocType>>,
+  ): Promise<RxStoragePESQLiteQueryBuilder<RxDocType>> {
+    const schemaHash = await defaultHashSha256(
+      JSON.stringify(collectionSchema),
+    );
+    const preexistingQueryBuilder = this.queryBuilders.get(schemaHash);
+    if (preexistingQueryBuilder !== undefined) {
+      return preexistingQueryBuilder;
+    }
+    const newQueryBuilder = new RxStoragePESQLiteQueryBuilder(collectionSchema);
+    this.queryBuilders.set(schemaHash, newQueryBuilder);
+    return newQueryBuilder;
+  }
+
+  private tableNameWithCollectionName(collectionName: string): string {
     if (collectionName === "_rxdb_internal") {
       return collectionName;
     }
@@ -331,28 +388,13 @@ export class RxStoragePESQLiteImplBetterSQLite3
     }
     return "collection_" + collectionName;
   }
-
-  private migration0001(): void {
-    if (!this.connection) {
-      throw new Error("No database connection");
-    }
-    createDocumentTableAndIndexsWithTableName(
-      this.connection,
-      RXDB_INTERNAL_TABLE,
-      true,
-    );
-    this.connection.pragma("user_version = 1");
-  }
-
-  private throwIfNoConnection(): void {
-    if (!this.connection || !this.connection.open) {
-      throw new Error("No database connection");
-    }
-  }
 }
 
-export function getPESQLiteImplBetterSQLite3(databaseOptions: DatabaseOptions) {
-  return new RxStoragePESQLiteImplBetterSQLite3(databaseOptions);
+export function getPESQLiteImplBetterSQLite3(
+  fileName?: string,
+  options?: RxStoragePESQLiteImpleBetterSQLite3Options,
+) {
+  return new RxStoragePESQLiteImplBetterSQLite3(fileName, options);
 }
 
 function createDocumentTableAndIndexsWithTableName(

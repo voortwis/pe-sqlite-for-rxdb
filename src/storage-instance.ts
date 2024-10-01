@@ -32,10 +32,7 @@ import type {
   StringKeys,
 } from "rxdb";
 import type { Observable } from "rxjs";
-import type {
-  RxStoragePESQLiteImpl,
-  RxStoragePESQLiteImplOptions,
-} from "./storage-impl";
+import type { RxStoragePESQLiteImpl } from "./storage-impl";
 import type { RxStoragePESQLiteInstanceCreationOptions } from "./storage-instance-options";
 import type { RxStoragePESQLiteOptions } from "./storage-options";
 import type { DocumentIdGetter } from "./types";
@@ -66,15 +63,15 @@ export class RxStoragePESQLiteInstance<RxDocType>
     >
 {
   private changes$: Subject<
-    EventBulk<RxStorageChangeEvent<RxDocType>, RxStoragePESQLiteCheckpoint>
+    EventBulk<
+      RxStorageChangeEvent<RxDocumentData<RxDocType>>,
+      RxStoragePESQLiteCheckpoint
+    >
   > = new Subject();
   private conflicts$: Subject<RxConflictResultionTask<RxDocType>> =
     new Subject();
   private primaryField: StringKeys<RxDocumentData<RxDocType>>;
   private userKey: number = 0; // Used by the internals instance.
-
-  readonly filename: string;
-  readonly implOptions: Partial<RxStoragePESQLiteImplOptions>;
 
   public closed?: Promise<void>;
 
@@ -85,13 +82,11 @@ export class RxStoragePESQLiteInstance<RxDocType>
     readonly options: Readonly<RxStoragePESQLiteInstanceCreationOptions>,
     readonly schema: Readonly<RxJsonSchema<RxDocumentData<RxDocType>>>,
   ) {
-    this.filename = this.getFilename();
-    this.implOptions = {};
     this.primaryField = getPrimaryFieldOfPrimaryKey(schema.primaryKey);
 
     this.internals.then(
       (impl: RxStoragePESQLiteImpl) => {
-        impl.init(this.filename, this.implOptions, collectionName).then(
+        impl.init(this.databaseName, collectionName).then(
           (userKey: number) => {
             this.userKey = userKey;
           },
@@ -112,12 +107,9 @@ export class RxStoragePESQLiteInstance<RxDocType>
     documentWrites: BulkWriteRow<RxDocType>[],
     context: string,
   ): Promise<RxStorageBulkWriteResponse<RxDocType>> {
-    console.log(
-      `bulkWrite(${documentWrites}, ${context}, collection=${this.collectionName})`,
-    );
     const error: RxStorageWriteError<RxDocType>[] = [];
     // success will go away in a later version of the interface.
-    const success: RxDocumentData<RxDocType>[] = [];
+    const success: RxDocType[] = [];
     const getDocumentId: DocumentIdGetter<RxDocType> = (
       document: RxDocumentData<RxDocType>,
     ) => document[this.primaryField];
@@ -137,7 +129,9 @@ export class RxStoragePESQLiteInstance<RxDocType>
     } else if (
       context === "internal-add-storage-token" ||
       context === "rx-collection-bulk-insert" ||
-      context === "rx-database-remove-collection-all"
+      context === "rx-database-remove-collection-all" ||
+      context === "rx-document-save-data" ||
+      context === "rx-document-remove"
     ) {
       const bulkWriteResult = await internals.bulkWrite<RxDocType>(
         this.collectionName,
@@ -151,6 +145,8 @@ export class RxStoragePESQLiteInstance<RxDocType>
       );
     }
 
+    // TODO: Pass changes to this.changes$
+
     return Promise.resolve({
       success,
       error,
@@ -158,7 +154,10 @@ export class RxStoragePESQLiteInstance<RxDocType>
   }
 
   changeStream(): Observable<
-    EventBulk<RxStorageChangeEvent<RxDocType>, RxStoragePESQLiteCheckpoint>
+    EventBulk<
+      RxStorageChangeEvent<RxDocumentData<RxDocType>>,
+      RxStoragePESQLiteCheckpoint
+    >
   > {
     console.log(`changeStream(collection=${this.collectionName})`);
     return this.changes$.asObservable();
@@ -222,7 +221,7 @@ export class RxStoragePESQLiteInstance<RxDocType>
     _checkpoint: RxStoragePESQLiteCheckpoint,
   ): Promise<
     NotRxStorageChangedDocumentsSinceResult<
-      RxDocType,
+      RxDocumentData<RxDocType>,
       RxStoragePESQLiteCheckpoint
     >
   > {
@@ -240,8 +239,8 @@ export class RxStoragePESQLiteInstance<RxDocType>
   ): Promise<RxStorageQueryResult<RxDocType>> {
     const internals = await this.internals;
 
-    return internals
-      .query(this.collectionName, preparedQuery)
+    return internals.query(this.collectionName, this.schema, preparedQuery);
+    /*
       .then((result) => {
         console.log("Query:");
         console.dir(preparedQuery.query, { depth: null });
@@ -251,6 +250,7 @@ export class RxStoragePESQLiteInstance<RxDocType>
         console.dir(result, { depth: null });
         return result;
       });
+     */
   }
 
   // Delete the storage instance for this collection.
@@ -267,13 +267,9 @@ export class RxStoragePESQLiteInstance<RxDocType>
     );
     return Promise.resolve();
   }
-
-  private getFilename(): string {
-    return this.databaseName + ".sqlite";
-  }
 }
 
-export function createRxStoragePESQLiteInstance<RxDocType>(
+export async function createRxStoragePESQLiteInstance<RxDocType>(
   params: RxStorageInstanceCreationParams<
     RxDocType,
     RxStoragePESQLiteInstanceCreationOptions

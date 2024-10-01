@@ -17,20 +17,12 @@
 import type {
   BulkWriteRow,
   PreparedQuery,
+  RxDocumentData,
+  RxJsonSchema,
   RxStorageBulkWriteResponse,
   RxStorageQueryResult,
 } from "rxdb";
-import type {
-  DocumentIdGetter,
-} from "./types";
-
-export interface RxStoragePESQLiteImplOptions {
-  readonly: boolean;
-  fileMustExist: boolean;
-  timeout: number;
-  logFunction: (message: string) => void;
-  nativeBinding: string;
-}
+import type { DocumentIdGetter } from "./types";
 
 export interface RxStoragePESQLiteImpl {
   close(userKey: number): Promise<void>;
@@ -44,13 +36,10 @@ export interface RxStoragePESQLiteImpl {
     getDocumentId: DocumentIdGetter<RxDocType>,
     bulkWrites: BulkWriteRow<RxDocType>[],
   ): Promise<RxStorageBulkWriteResponse<RxDocType>>;
-  init(
-    filename: string,
-    options: Partial<RxStoragePESQLiteImplOptions>,
-    collectionName: string,
-  ): Promise<number>;
+  init(databaseName: string, collectionName: string): Promise<number>;
   query<RxDocType>(
     collectionName: string,
+    collectionSchema: RxJsonSchema<RxDocumentData<RxDocType>>,
     preparedQuery: PreparedQuery<RxDocType>,
   ): Promise<RxStorageQueryResult<RxDocType>>;
   removeCollection(collectionName: string): Promise<void>;
@@ -59,5 +48,5 @@ export interface RxStoragePESQLiteImpl {
 
 export async function getDefaultSQLiteImpl(): Promise<RxStoragePESQLiteImpl> {
   const betterSQLite3ImplModule = await import("./storage-impl-better-sqlite3");
-  return betterSQLite3ImplModule.getPESQLiteImplBetterSQLite3({});
+  return betterSQLite3ImplModule.getPESQLiteImplBetterSQLite3();
 }

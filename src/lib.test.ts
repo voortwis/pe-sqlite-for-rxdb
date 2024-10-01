@@ -15,9 +15,13 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import type { Options as DatabaseOptions } from "better-sqlite3";
+import type {
+  ExtractDocumentTypeFromTypedRxJsonSchema,
+  RxJsonSchema,
+} from "rxdb";
 import type { RxStoragePESQLite } from "./lib";
 
-import { addRxPlugin, createRxDatabase } from "rxdb";
+import { addRxPlugin, createRxDatabase, toTypedRxJsonSchema } from "rxdb";
 import { describe, expect, it } from "vitest";
 import {
   getInternalsWithImpl,
@@ -40,7 +44,9 @@ describe("pe-sqlite-for-rxdb tests", () => {
 
     // Create an RxCollection
     // Creating a schema for a collection
-    const todoSchema = {
+    // See the RxDB TypeScript Tutorial for types:
+    // https://rxdb.info/tutorials/typescript.html
+    const todoSchemaLiteral = {
       version: 0,
       primaryKey: "id",
       type: "object",
@@ -61,7 +67,12 @@ describe("pe-sqlite-for-rxdb tests", () => {
         },
       },
       required: ["id", "name", "done", "timestamp"],
-    };
+    } as const;
+    const schemaTyped = toTypedRxJsonSchema(todoSchemaLiteral);
+    type TodoDocType = ExtractDocumentTypeFromTypedRxJsonSchema<
+      typeof schemaTyped
+    >;
+    const todoSchema: RxJsonSchema<TodoDocType> = todoSchemaLiteral;
 
     expect(myDatabase.todos).toBeFalsy();
     // Adding an RxCollection to the RxDatabase
@@ -71,6 +82,10 @@ describe("pe-sqlite-for-rxdb tests", () => {
       },
     });
     expect(myDatabase.todos).toBeTruthy();
+
+    //
+    // Write Operations
+    //
 
     // Inserting a document
     const myDocument = await myDatabase.todos.insert({
@@ -82,6 +97,60 @@ describe("pe-sqlite-for-rxdb tests", () => {
     expect(myDocument.isInstanceOfRxDocument).toBeTruthy();
     const mapOfDocuments = await myDatabase.todos.findByIds(["todo1"]).exec();
     expect(mapOfDocuments.get("todo1")).toBeTruthy();
+
+    // Updating a document
+    expect(myDocument.done).toBe(false);
+    const updatedMyDocument = await myDocument.patch({
+      done: true,
+    });
+    expect(updatedMyDocument.done).toBe(true);
+
+    const myDocument2 = await myDatabase.todos.insert({
+      id: "todo2",
+      name: "Make the quickstart work",
+      done: false,
+      timestamp: new Date().toISOString(),
+    });
+    expect(myDocument2.isInstanceOfRxDocument).toBeTruthy();
+    const mapOfDocuments2 = await myDatabase.todos.findByIds(["todo2"]).exec();
+    expect(mapOfDocuments2.get("todo2")).toBeTruthy();
+
+    expect(myDocument2.done).toBe(false);
+    const updatedMyDocument2 = await myDocument2.modify(
+      (docData: TodoDocType) => {
+        docData.done = true;
+        return docData;
+      },
+    );
+    expect(updatedMyDocument2.done).toBe(true);
+
+    await myDatabase.todos.insert({
+      id: "todo3",
+      name: "Make the quickstart tests work",
+      done: false,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Delete a document
+    const deletedMyDocument2 = await updatedMyDocument.remove();
+    expect(deletedMyDocument2._deleted).toBe(true);
+    expect(parseInt(deletedMyDocument2._rev)).toBe(3);
+
+    //
+    // Query Operations
+    //
+
+    // Simple Query
+    const foundDocuments = await myDatabase.todos
+      .find({
+        selector: {
+          done: {
+            $eq: false,
+          },
+        },
+      })
+      .exec();
+    expect(foundDocuments.length).toEqual(1);
   });
   it("accepts options for better-sqlite3", async () => {
     const betterSQLite3Options: DatabaseOptions = {
@@ -89,12 +158,13 @@ describe("pe-sqlite-for-rxdb tests", () => {
       fileMustExist: false, // default: false
       timeout: 5000, // default: 5000, in milliseconds
       verbose: undefined, // default: undefined, logging function: (string) => void;
-      nativeBinding: "node_modules/better-sqlite3/build/release", // path to better_sqlite3.node if not found
+      //      nativeBinding: "node_modules/better-sqlite3/build/Release", // path to better_sqlite3.node if not found
     };
     const databaseName = "my_database";
+    const fileName = "my_database.sqlite3";
     const databaseStorage = getRxStoragePESQLite({
       sqliteInternals: getInternalsWithImpl(
-        getPESQLiteImplBetterSQLite3(betterSQLite3Options),
+        getPESQLiteImplBetterSQLite3(fileName, betterSQLite3Options),
       ),
     });
 

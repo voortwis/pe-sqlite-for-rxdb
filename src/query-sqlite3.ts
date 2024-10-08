@@ -178,7 +178,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
 
   private operatorAnd(
     prefix: Paths<RxDocumentData<RxDocType>>,
-    selector: MangoQuerySelector<RxDocumentData<RxDocType>>,
+    selector: MangoQuerySelector<RxDocumentData<RxDocType>> | MangoQuerySelector<RxDocumentData<RxDocType>>[],
   ): WhereConditions {
     const conditions: WhereConditions[] = [];
 
@@ -206,8 +206,6 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     prefix: Paths<RxDocumentData<RxDocType>>,
     value: MangoQuerySelector<RxDocumentData<RxDocType>>,
   ): WhereConditions {
-    console.log(`MQS: ${prefix} - ${value}`);
-    console.dir(value, { depth: null });
     const columnInfo = this.columnMap.get(prefix);
     const valueType = typeof value;
     if (columnInfo?.column) {

@@ -16,6 +16,8 @@
 
 import type {
   BulkWriteRow,
+  InternalStoreCollectionDocType,
+  InternalStoreDocType,
   PreparedQuery,
   RxDocumentData,
   RxJsonSchema,
@@ -36,6 +38,29 @@ import { defaultHashSha256 } from "rxdb";
 import { RxStoragePESQLiteQueryBuilder } from "./query-sqlite3";
 
 const RXDB_INTERNAL_TABLE = "_rxdb_internal";
+
+function isInternalStoreDocType<DocType>(probableInternalStoreDoc: unknown): probableInternalStoreDoc is InternalStoreDocType<DocType> {
+  const doc: InternalStoreDocType<DocType> = probableInternalStoreDoc as InternalStoreDocType<DocType>;
+  return(
+    typeof doc?.id === "string" &&
+    typeof doc?.key === "string" &&
+    typeof doc?.context === "string" &&
+    typeof doc?.data === "object"
+  );
+}
+
+function isInternalStoreCollectionDocType(probableInternalStoreCollectionDoc: unknown): probableInternalStoreCollectionDoc is InternalStoreCollectionDocType {
+  const doc: InternalStoreCollectionDocType = probableInternalStoreCollectionDoc as InternalStoreCollectionDocType;
+  return(
+    isInternalStoreDocType(doc) &&
+    typeof doc?.data?.name === "string" &&
+    typeof doc?.data?.schema === "object" &&
+    typeof doc?.data?.schemaHash === "string" &&
+    typeof doc?.data?.version === "number" &&
+    (typeof doc?.data?.connectedStorages !== "undefined"  && Array.isArray(doc.data.connectedStorages)) &&
+    (typeof doc?.data?.migrationStatus === "undefined" || typeof doc?.data?.migrationStatus === "object")
+  );
+}
 
 interface SqliteError extends Error {
   name: string;
@@ -64,6 +89,11 @@ export class RxStoragePESQLiteImplBetterSQLite3
   implements RxStoragePESQLiteImpl
 {
   private _connection?: DatabaseInterface;
+  // TODO:
+  // In order to remove this <any>, we need to split Impl from Internals.
+  // Internals will be specific to the document type and Impl will not.
+  // Then, this map of query builders will be owned by the Internals class.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private queryBuilders: Map<string, RxStoragePESQLiteQueryBuilder<any>> =
     new Map();
   private userMap: Map<number, string> = new Map();
@@ -97,16 +127,21 @@ export class RxStoragePESQLiteImplBetterSQLite3
         return Promise.resolve(bulkWriteResult);
       }
       const collectionDocument = bulkWrites[0].document;
-      // FIXME: Get the collection name some other way.
-      const collectionTableName = this.tableNameWithCollectionName(
-        collectionDocument.data.name,
-      );
-      createDocumentTableAndIndexsWithTableName(
-        this.connection(),
-        collectionTableName,
-      );
+      if (isInternalStoreCollectionDocType(collectionDocument)) {
+        const collectionTableName = this.tableNameWithCollectionName(
+          collectionDocument.data.name,
+        );
+        createDocumentTableAndIndexsWithTableName(
+          this.connection(),
+          collectionTableName,
+        );
 
-      return Promise.resolve(bulkWriteResult);
+        return Promise.resolve(bulkWriteResult);
+      } else {
+        console.error("Collection document is not an InternalStoreCollectionDocType");
+        console.dir(collectionDocument, {depth: null});
+        throw new Error("Expected a collection document to be an InternalStoreCollectionDocType.");
+      }
     } catch (err: unknown) {
       return Promise.reject(err);
     }
@@ -121,7 +156,6 @@ export class RxStoragePESQLiteImplBetterSQLite3
       const connection = this.connection();
 
       const error: RxStorageWriteError<RxDocType>[] = [];
-      const hasContextColumn = collectionName == RXDB_INTERNAL_TABLE;
       const tableName = this.tableNameWithCollectionName(collectionName);
 
       for (let writeIndex = 0; writeIndex < bulkWrites.length; writeIndex++) {
@@ -136,9 +170,8 @@ export class RxStoragePESQLiteImplBetterSQLite3
           "\t,deleted\n",
           "\t,rev\n",
           "\t,mtime_ms\n",
-          hasContextColumn ? "\t,context\n" : "",
           ") VALUES (\n",
-          "\t?, jsonb(?), ?, ?, ?" + (hasContextColumn ? ", ?" : "") + "\n",
+          "\t?, jsonb(?), ?, ?, ?\n",
           ")\n",
         ].join("");
         const sqlPart2 = [
@@ -148,7 +181,6 @@ export class RxStoragePESQLiteImplBetterSQLite3
           "\t,deleted=excluded.deleted\n",
           "\t,rev=excluded.rev\n",
           "\t,mtime_ms=excluded.mtime_ms\n",
-          hasContextColumn ? "\t,context=excluded.context\n" : "\n",
           "\tWHERE\n",
           `\t\trev = ?\n`,
         ].join("");
@@ -162,10 +194,6 @@ export class RxStoragePESQLiteImplBetterSQLite3
           newVersionOfDocument._rev,
           Math.floor(newVersionOfDocument._meta.lwt),
         ];
-        if (hasContextColumn) {
-          // FIXME: Is there a type safe way to do this?
-          insertArgs.push(newVersionOfDocument.context);
-        }
         if (previousVersionOfDocument) {
           insertArgs.push(previousVersionOfDocument._rev);
         }
@@ -348,7 +376,6 @@ export class RxStoragePESQLiteImplBetterSQLite3
     createDocumentTableAndIndexsWithTableName(
       this.connection(),
       RXDB_INTERNAL_TABLE,
-      true,
     );
     this.connection().pragma("user_version = 1");
   }
@@ -400,7 +427,6 @@ export function getPESQLiteImplBetterSQLite3(
 function createDocumentTableAndIndexsWithTableName(
   connection: DatabaseInterface,
   tableName: string,
-  addContextColumn?: boolean,
 ) {
   if (!connection || !connection.open) {
     throw new Error("No database connection");
@@ -424,7 +450,6 @@ function createDocumentTableAndIndexsWithTableName(
         "\t,deleted INTEGER NOT NULL\n",
         "\t,rev TEXT NOT NULL\n",
         "\t,mtime_ms INTEGER NOT NULL\n",
-        addContextColumn ? "\t,context TEXT NOT NULL\n" : "",
         ");",
       ].join(""),
     );
@@ -451,13 +476,4 @@ function createDocumentTableAndIndexsWithTableName(
     ].join(""),
   );
   sql3.run();
-  if (addContextColumn) {
-    const sql4 = connection.prepare(
-      [
-        "CREATE INDEX idx_" + tableName + "_context\n",
-        "\tON " + tableName + "(context);",
-      ].join(""),
-    );
-    sql4.run();
-  }
 }

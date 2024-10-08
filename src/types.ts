@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import type { JsonSchemaTypes, Paths, RxDocumentData, StringKeys } from "rxdb";
+import type { JsonSchemaTypes, Paths, StringKeys } from "rxdb";
 
 export interface ColumnInformation {
   column?: string;
@@ -25,5 +25,5 @@ export interface ColumnInformation {
 export type ColumnMap<T> = Map<Paths<T>, ColumnInformation>;
 
 export type DocumentIdGetter<RxDocType> = (
-  document: RxDocumentData<RxDocType>,
-) => RxDocumentData<RxDocType>[StringKeys<RxDocumentData<RxDocType>>];
+  document: RxDocType,
+) => RxDocType[StringKeys<RxDocType>];

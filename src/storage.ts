@@ -19,7 +19,6 @@ import type {
   RxStorageInstance,
   RxStorageInstanceCreationParams,
 } from "rxdb";
-import type { RxStoragePESQLiteCheckpoint } from "./storage-checkpoint";
 import type { RxStoragePESQLiteInstanceCreationOptions } from "./storage-instance-options";
 import type { RxStoragePESQLiteInternals } from "./storage-internals";
 import type { RxStoragePESQLiteOptions } from "./storage-options";
@@ -50,8 +49,7 @@ export class RxStoragePESQLite
     RxStorageInstance<
       RxDocType,
       RxStoragePESQLiteInternals,
-      RxStoragePESQLiteInstanceCreationOptions,
-      RxStoragePESQLiteCheckpoint
+      RxStoragePESQLiteInstanceCreationOptions
     >
   > {
     return createRxStoragePESQLiteInstance(params, this.options);

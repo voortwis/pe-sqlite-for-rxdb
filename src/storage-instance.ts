@@ -39,7 +39,6 @@ import type { DocumentIdGetter } from "./types";
 
 import { getPrimaryFieldOfPrimaryKey } from "rxdb";
 import { Subject } from "rxjs";
-import { RxStoragePESQLiteCheckpoint } from "./storage-checkpoint";
 import { RxStoragePESQLiteInternals } from "./storage-internals";
 
 interface NotRxStorageChangedDocumentsSinceResult<RxDocType, CheckpointType> {
@@ -53,24 +52,24 @@ interface NotRxStorageChangedDocumentsSinceResult<RxDocType, CheckpointType> {
  * exist, sharing the same underlying RxStoragePESQLiteInternals (which maps to
  * an RxStoragePESQLiteImpl).
  */
-export class RxStoragePESQLiteInstance<RxDocType>
+export class RxStoragePESQLiteInstance<RxDocType, CheckpointType = any>
   implements
     RxStorageInstance<
       RxDocType,
       RxStoragePESQLiteInternals,
       RxStoragePESQLiteInstanceCreationOptions,
-      RxStoragePESQLiteCheckpoint
+      CheckpointType
     >
 {
   private changes$: Subject<
     EventBulk<
       RxStorageChangeEvent<RxDocumentData<RxDocType>>,
-      RxStoragePESQLiteCheckpoint
+      CheckpointType
     >
   > = new Subject();
   private conflicts$: Subject<RxConflictResultionTask<RxDocType>> =
     new Subject();
-  private primaryField: StringKeys<RxDocumentData<RxDocType>>;
+  private primaryField: StringKeys<RxDocType>;
   private userKey: number = 0; // Used by the internals instance.
 
   public closed?: Promise<void>;
@@ -82,7 +81,10 @@ export class RxStoragePESQLiteInstance<RxDocType>
     readonly options: Readonly<RxStoragePESQLiteInstanceCreationOptions>,
     readonly schema: Readonly<RxJsonSchema<RxDocumentData<RxDocType>>>,
   ) {
-    this.primaryField = getPrimaryFieldOfPrimaryKey(schema.primaryKey);
+    // The return type of getPrimaryFieldOfPrimaryKey() seems to be off by a
+    // bit.  There is no reason for RxDocumentData<RxDocType> to be part of the
+    // primary field.  For this reason, we cast it to StringKeys<RxDocType>.
+    this.primaryField = getPrimaryFieldOfPrimaryKey(schema.primaryKey) as StringKeys<RxDocType>;
 
     this.internals.then(
       (impl: RxStoragePESQLiteImpl) => {
@@ -111,7 +113,7 @@ export class RxStoragePESQLiteInstance<RxDocType>
     // success will go away in a later version of the interface.
     const success: RxDocType[] = [];
     const getDocumentId: DocumentIdGetter<RxDocType> = (
-      document: RxDocumentData<RxDocType>,
+      document: RxDocType,
     ) => document[this.primaryField];
 
     const internals = await this.internals;
@@ -156,7 +158,7 @@ export class RxStoragePESQLiteInstance<RxDocType>
   changeStream(): Observable<
     EventBulk<
       RxStorageChangeEvent<RxDocumentData<RxDocType>>,
-      RxStoragePESQLiteCheckpoint
+      CheckpointType
     >
   > {
     console.log(`changeStream(collection=${this.collectionName})`);
@@ -218,20 +220,17 @@ export class RxStoragePESQLiteInstance<RxDocType>
 
   getChangedDocumentsSince(
     _limit: number,
-    _checkpoint: RxStoragePESQLiteCheckpoint,
+    _checkpoint: CheckpointType,
   ): Promise<
     NotRxStorageChangedDocumentsSinceResult<
       RxDocumentData<RxDocType>,
-      RxStoragePESQLiteCheckpoint
+      CheckpointType
     >
   > {
     console.log(
       `Unhandled getChangedDocumentsSince() for collection (${this.collectionName})`,
     );
-    return Promise.resolve({
-      documents: [],
-      checkpoint: new RxStoragePESQLiteCheckpoint("hello", 123.0),
-    });
+    return Promise.reject(new Error("Not implemented"));
   }
 
   async query(

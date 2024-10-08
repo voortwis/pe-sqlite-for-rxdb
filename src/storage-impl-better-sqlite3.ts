@@ -39,9 +39,12 @@ import { RxStoragePESQLiteQueryBuilder } from "./query-sqlite3";
 
 const RXDB_INTERNAL_TABLE = "_rxdb_internal";
 
-function isInternalStoreDocType<DocType>(probableInternalStoreDoc: unknown): probableInternalStoreDoc is InternalStoreDocType<DocType> {
-  const doc: InternalStoreDocType<DocType> = probableInternalStoreDoc as InternalStoreDocType<DocType>;
-  return(
+function isInternalStoreDocType<DocType>(
+  probableInternalStoreDoc: unknown,
+): probableInternalStoreDoc is InternalStoreDocType<DocType> {
+  const doc: InternalStoreDocType<DocType> =
+    probableInternalStoreDoc as InternalStoreDocType<DocType>;
+  return (
     typeof doc?.id === "string" &&
     typeof doc?.key === "string" &&
     typeof doc?.context === "string" &&
@@ -49,16 +52,21 @@ function isInternalStoreDocType<DocType>(probableInternalStoreDoc: unknown): pro
   );
 }
 
-function isInternalStoreCollectionDocType(probableInternalStoreCollectionDoc: unknown): probableInternalStoreCollectionDoc is InternalStoreCollectionDocType {
-  const doc: InternalStoreCollectionDocType = probableInternalStoreCollectionDoc as InternalStoreCollectionDocType;
-  return(
+function isInternalStoreCollectionDocType(
+  probableInternalStoreCollectionDoc: unknown,
+): probableInternalStoreCollectionDoc is InternalStoreCollectionDocType {
+  const doc: InternalStoreCollectionDocType =
+    probableInternalStoreCollectionDoc as InternalStoreCollectionDocType;
+  return (
     isInternalStoreDocType(doc) &&
     typeof doc?.data?.name === "string" &&
     typeof doc?.data?.schema === "object" &&
     typeof doc?.data?.schemaHash === "string" &&
     typeof doc?.data?.version === "number" &&
-    (typeof doc?.data?.connectedStorages !== "undefined"  && Array.isArray(doc.data.connectedStorages)) &&
-    (typeof doc?.data?.migrationStatus === "undefined" || typeof doc?.data?.migrationStatus === "object")
+    typeof doc?.data?.connectedStorages !== "undefined" &&
+    Array.isArray(doc.data.connectedStorages) &&
+    (typeof doc?.data?.migrationStatus === "undefined" ||
+      typeof doc?.data?.migrationStatus === "object")
   );
 }
 
@@ -138,9 +146,13 @@ export class RxStoragePESQLiteImplBetterSQLite3
 
         return Promise.resolve(bulkWriteResult);
       } else {
-        console.error("Collection document is not an InternalStoreCollectionDocType");
-        console.dir(collectionDocument, {depth: null});
-        throw new Error("Expected a collection document to be an InternalStoreCollectionDocType.");
+        console.error(
+          "Collection document is not an InternalStoreCollectionDocType",
+        );
+        console.dir(collectionDocument, { depth: null });
+        throw new Error(
+          "Expected a collection document to be an InternalStoreCollectionDocType.",
+        );
       }
     } catch (err: unknown) {
       return Promise.reject(err);

@@ -62,10 +62,7 @@ export class RxStoragePESQLiteInstance<RxDocType, CheckpointType = any>
     >
 {
   private changes$: Subject<
-    EventBulk<
-      RxStorageChangeEvent<RxDocumentData<RxDocType>>,
-      CheckpointType
-    >
+    EventBulk<RxStorageChangeEvent<RxDocumentData<RxDocType>>, CheckpointType>
   > = new Subject();
   private conflicts$: Subject<RxConflictResultionTask<RxDocType>> =
     new Subject();
@@ -84,7 +81,9 @@ export class RxStoragePESQLiteInstance<RxDocType, CheckpointType = any>
     // The return type of getPrimaryFieldOfPrimaryKey() seems to be off by a
     // bit.  There is no reason for RxDocumentData<RxDocType> to be part of the
     // primary field.  For this reason, we cast it to StringKeys<RxDocType>.
-    this.primaryField = getPrimaryFieldOfPrimaryKey(schema.primaryKey) as StringKeys<RxDocType>;
+    this.primaryField = getPrimaryFieldOfPrimaryKey(
+      schema.primaryKey,
+    ) as StringKeys<RxDocType>;
 
     this.internals.then(
       (impl: RxStoragePESQLiteImpl) => {
@@ -112,9 +111,8 @@ export class RxStoragePESQLiteInstance<RxDocType, CheckpointType = any>
     const error: RxStorageWriteError<RxDocType>[] = [];
     // success will go away in a later version of the interface.
     const success: RxDocType[] = [];
-    const getDocumentId: DocumentIdGetter<RxDocType> = (
-      document: RxDocType,
-    ) => document[this.primaryField];
+    const getDocumentId: DocumentIdGetter<RxDocType> = (document: RxDocType) =>
+      document[this.primaryField];
 
     const internals = await this.internals;
 
@@ -156,10 +154,7 @@ export class RxStoragePESQLiteInstance<RxDocType, CheckpointType = any>
   }
 
   changeStream(): Observable<
-    EventBulk<
-      RxStorageChangeEvent<RxDocumentData<RxDocType>>,
-      CheckpointType
-    >
+    EventBulk<RxStorageChangeEvent<RxDocumentData<RxDocType>>, CheckpointType>
   > {
     console.log(`changeStream(collection=${this.collectionName})`);
     return this.changes$.asObservable();

@@ -17,6 +17,7 @@
 import type {
   JsonSchema,
   MangoQuerySelector,
+  MangoQuerySortPart,
   Paths,
   PreparedQuery,
   RxDocumentData,
@@ -26,8 +27,14 @@ import type {
 } from "rxdb";
 import type { ColumnMap } from "./types";
 
+import { getPrimaryFieldOfPrimaryKey } from "rxdb";
+
 // Args which our SQLiteImpl can serialize.
 export type ArgsType = Array<string | number | Buffer>;
+
+export interface OrderByClause {
+  clause: string;
+}
 
 export interface QueryAndArgs {
   args: ArgsType;
@@ -67,8 +74,12 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     const rootPath = "" as Paths<RxDocumentData<RxDocType>>;
     const selector: MangoQuerySelector<RxDocumentData<RxDocType>> =
       preparedQuery.query.selector;
-    const whereConditions = this.operatorAnd(rootPath, selector);
-    return this.queryAndArgsWithWhereConditions(whereConditions);
+    const whereConditions = this.operatorAndObject(rootPath, selector);
+    const orderBy = this.orderByWithPreparedQuery(preparedQuery);
+    return this.queryAndArgsWithWhereConditionsAndOrderBy(
+      whereConditions,
+      orderBy,
+    );
   }
 
   private argsWithMangoQuerySelector(
@@ -104,6 +115,9 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
   ): ColumnMap<RxDocumentData<RxDocType>> {
     const result: ColumnMap<RxDocumentData<RxDocType>> = new Map();
     const prefixString = prefix.length ? prefix.join(".") + "." : "";
+    const primaryField = getPrimaryFieldOfPrimaryKey(
+      this.collectionSchema.primaryKey,
+    );
     for (const [untypedKey, untypedValue] of Object.entries(properties)) {
       const key = untypedKey as StringKeys<RxDocumentData<RxDocType>>;
       const value = untypedValue as TopLevelProperty;
@@ -122,11 +136,11 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
       } else if (key === "_rev" && value.type === "string") {
         result.set(propertyKey, { column: "rev", type: "string" });
         continue;
-      } else if (key === this.collectionSchema.primaryKey) {
+      } else if (key === primaryField) {
         if (value.type !== undefined) {
           result.set(propertyKey, { column: "id", type: value.type });
         } else {
-          console.log(`Property key ${propertyKey} has undefined type`);
+          throw new Error(`Property key ${propertyKey} has undefined type`);
         }
         continue;
       } else if (key === "_attachments") {
@@ -160,7 +174,8 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     return result;
   }
 
-  private joinConditions(conditions: WhereConditions[]): WhereConditions {
+  // TODO: Combine joinConditionsAnd and joinConditionsOr using partial functions.
+  private joinConditionsAnd(conditions: WhereConditions[]): WhereConditions {
     const allConditions: string[] = [];
     const allArgs: Array<string | number | Buffer> = [];
 
@@ -176,29 +191,92 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     return result;
   }
 
-  private operatorAnd(
+  private joinConditionsOr(conditions: WhereConditions[]): WhereConditions {
+    const allConditions: string[] = [];
+    const allArgs: Array<string | number | Buffer> = [];
+
+    for (let i = 0; i < conditions.length; i++) {
+      const condition = conditions[i];
+      allConditions.push(condition.condition);
+      allArgs.push(...condition.args);
+    }
+    const result: WhereConditions = {
+      condition: allConditions.join(" OR "),
+      args: allArgs,
+    };
+    return result;
+  }
+
+  private operatorAndArray(
     prefix: Paths<RxDocumentData<RxDocType>>,
-    selector: MangoQuerySelector<RxDocumentData<RxDocType>> | MangoQuerySelector<RxDocumentData<RxDocType>>[],
+    selector: MangoQuerySelector<RxDocumentData<RxDocType>>[],
   ): WhereConditions {
     const conditions: WhereConditions[] = [];
+    if (Array.isArray(selector)) {
+      for (let i = 0; i < selector.length; i++) {
+        const currentSelector = selector[i];
+        if (typeof currentSelector === "object") {
+          const innerConditions = this.operatorAndObject(
+            prefix,
+            currentSelector,
+          );
+          conditions.push(innerConditions);
+        } else {
+          throw new Error(
+            `Every member of an $and array must be an object: selector[${i}] = ${currentSelector}`,
+          );
+        }
+      }
+    } else {
+      throw new Error(
+        `operatorAndArray received a non-Array argument ${selector}`,
+      );
+    }
+    const result = this.joinConditionsAnd(conditions);
+    return result;
+  }
 
+  private operatorAndObject(
+    prefix: Paths<RxDocumentData<RxDocType>>,
+    selector: MangoQuerySelector<RxDocumentData<RxDocType>>,
+  ): WhereConditions {
+    const conditions: WhereConditions[] = [];
     for (const [key, value] of Object.entries(selector)) {
       if (typeof key === "string") {
-        const keyAsPath = key as Paths<RxDocumentData<RxDocType>>;
-        if (key.length >= 3 && key[0] === "$") {
-          // Operators
-          if (key === "$eq") {
-            conditions.push(this.operatorEquals(prefix, value));
+        if (Array.isArray(value)) {
+          if (key.length >= 3 && key[0] === "$") {
+            if (key === "$and") {
+              conditions.push(this.operatorAndArray(prefix, value));
+            } else if (key === "$or") {
+              conditions.push(this.operatorOrArray(prefix, value));
+            } else {
+              throw new Error(
+                `1.Unable to handle key ${key} with value Array ${value}`,
+              );
+            }
+          } else {
+            throw new Error(
+              `2.Unable to handle key ${key} with value Array ${value}`,
+            );
           }
-        } else if (this.columnMap.has(keyAsPath)) {
-          // Found a column
-          const innerPrefix = this.prefixWithChild(prefix, key);
-          conditions.push(this.operatorEquals(innerPrefix, value));
+        } else {
+          const keyAsPath = key as Paths<RxDocumentData<RxDocType>>;
+          if (key.length >= 3 && key[0] === "$") {
+            // Operators
+            if (key === "$eq") {
+              conditions.push(this.operatorEquals(prefix, value));
+            } else if (key === "$and" || key === "$or") {
+              throw `Unable to handle key ${key} with non-Array value ${value}`;
+            }
+          } else if (this.columnMap.has(keyAsPath)) {
+            // Found a column
+            const innerPrefix = this.prefixWithChild(prefix, key);
+            conditions.push(this.operatorEquals(innerPrefix, value));
+          }
         }
       }
     }
-
-    const result = this.joinConditions(conditions);
+    const result = this.joinConditionsAnd(conditions);
     return result;
   }
 
@@ -219,7 +297,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
           args: this.argsWithMangoQuerySelector(value),
         };
       } else if (valueType === "object") {
-        return this.operatorAnd(prefix, value);
+        return this.operatorAndObject(prefix, value);
       } else {
         throw new Error(
           `Type error.  Key ${prefix} is a ${columnInfo.type}.  Value ${value} is a ${typeof value}.`,
@@ -237,7 +315,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
           args: this.argsWithMangoQuerySelector(value, true),
         };
       } else if (valueType === "object") {
-        return this.operatorAnd(prefix, value);
+        return this.operatorAndObject(prefix, value);
       } else {
         throw new Error(
           `Type error.  Key ${prefix} is a ${columnInfo.type}.  Value ${value} is a ${valueType}.`,
@@ -249,6 +327,70 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     throw new Error(`Unable to process query for prefix: ${prefix}`);
   }
 
+  private operatorOrArray(
+    prefix: Paths<RxDocumentData<RxDocType>>,
+    selector: MangoQuerySelector<RxDocumentData<RxDocType>>[],
+  ): WhereConditions {
+    const conditions: WhereConditions[] = [];
+    if (Array.isArray(selector)) {
+      for (let i = 0; i < selector.length; i++) {
+        const currentSelector = selector[i];
+        if (typeof currentSelector === "object") {
+          const innerConditions = this.operatorAndObject(
+            prefix,
+            currentSelector,
+          );
+          conditions.push(innerConditions);
+        } else {
+          throw new Error(
+            `Every member of an $or array must be an object: selector[${i}] = ${currentSelector}`,
+          );
+        }
+      }
+    } else {
+      throw new Error(
+        `operatorOrArray received a non-Array argument ${selector}`,
+      );
+    }
+    return this.joinConditionsOr(conditions);
+  }
+
+  private orderByWithPreparedQuery(
+    preparedQuery: PreparedQuery<RxDocType>,
+  ): OrderByClause {
+    const parts: string[] = [];
+    for (let i = 0; i < preparedQuery.query.sort.length; i++) {
+      const sortKey: MangoQuerySortPart<RxDocumentData<RxDocType>> =
+        preparedQuery.query.sort[i];
+      for (const [k, value] of Object.entries(sortKey)) {
+        const key = k as Paths<RxDocumentData<RxDocType>>;
+        const columnInfo = this.columnMap.get(key);
+        if (columnInfo === undefined) {
+          throw new Error(`Missing information for document property ${key}`);
+        } else if (value !== "asc" && value !== "desc") {
+          throw new Error(
+            `MangoQuerySortDirection is neither 'asc' nor 'desc': ${value}`,
+          );
+        }
+        if (columnInfo?.column) {
+          parts.push(columnInfo.column + " " + value.toUpperCase());
+        } else if (columnInfo?.jsonPath) {
+          parts.push(
+            "jsonb ->> '" + columnInfo.jsonPath + "' " + value.toUpperCase(),
+          );
+        } else {
+          throw new Error(
+            `Unable to find a column or JSON path for document properties ${key}`,
+          );
+        }
+      }
+    }
+    const result = parts.length ? "ORDER BY " + parts.join(", ") : "";
+    return {
+      clause: result,
+    };
+  }
+
   private prefixWithChild(
     prefix: Paths<RxDocumentData<RxDocType>> | string,
     child: Paths<RxDocumentData<RxDocType>> | string,
@@ -258,10 +400,14 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     return result;
   }
 
-  private queryAndArgsWithWhereConditions(
+  private queryAndArgsWithWhereConditionsAndOrderBy(
     whereConditions: WhereConditions,
+    orderBy: OrderByClause,
   ): QueryAndArgs {
-    const query = "WHERE " + whereConditions.condition + " ORDER BY id ASC";
+    const query =
+      "WHERE " +
+      whereConditions.condition +
+      (orderBy.clause ? " " + orderBy.clause : "");
     return {
       args: whereConditions.args,
       query,

@@ -35,7 +35,6 @@ describe("query-sqlite3 tests", () => {
     );
   });
   it("finds all internal documents", () => {
-    // FIXME: This should use the context column.
     const expectedQuery =
       "WHERE jsonb ->> '$.context' = ? AND deleted = ? ORDER BY id ASC";
     const expectedArgs = ["collection", 0];
@@ -61,7 +60,7 @@ describe("query-sqlite3 tests", () => {
     const queryBuilder = new RxStoragePESQLiteQueryBuilder(collectionSchema1);
     expect(queryBuilder.columnMap).toEqual(expected);
   });
-  it("joins conditions correctly", () => {
+  it("joins conditions correctly with AND", () => {
     const expected = {
       condition: "id = ? AND jsonb -> '$.done' = ? AND deleted = ?",
       args: [12345, "false", 0],
@@ -81,7 +80,61 @@ describe("query-sqlite3 tests", () => {
       },
     ];
     const queryBuilder = new RxStoragePESQLiteQueryBuilder(collectionSchema1);
-    expect(queryBuilder["joinConditions"](conditions)).toEqual(expected);
+    expect(queryBuilder["joinConditionsAnd"](conditions)).toEqual(expected);
+  });
+  it("joins conditions correctly with OR", () => {
+    const expected = {
+      condition: "id = ? OR jsonb -> '$.done' = ? OR deleted = ?",
+      args: [12345, "false", 0],
+    };
+    const conditions = [
+      {
+        condition: "id = ?",
+        args: [12345],
+      },
+      {
+        condition: "jsonb -> '$.done' = ?",
+        args: ["false"],
+      },
+      {
+        condition: "deleted = ?",
+        args: [0],
+      },
+    ];
+    const queryBuilder = new RxStoragePESQLiteQueryBuilder(collectionSchema1);
+    expect(queryBuilder["joinConditionsOr"](conditions)).toEqual(expected);
+  });
+  it("can handle all kinds of ANDs", () => {
+    const expected = {
+      query: "WHERE id = ? AND jsonb -> '$.baz' = ? ORDER BY id ASC",
+      args: ["bar", "true"],
+    };
+    const queryBuilder = new RxStoragePESQLiteQueryBuilder(collectionSchema3);
+    const query = Object.assign({}, preparedQuery3);
+    query.query = {
+      selector: { foo: "bar", baz: true },
+      sort: [{ foo: "asc" }],
+      skip: 0,
+    };
+    expect(queryBuilder.queryAndArgsWithPreparedQuery(query)).toEqual(expected);
+    query.query.selector = {
+      $and: [{ foo: { $eq: "bar" } }, { baz: { $eq: true } }],
+    };
+    expect(queryBuilder.queryAndArgsWithPreparedQuery(query)).toEqual(expected);
+  });
+  it("can order results", () => {
+    const expected = {
+      query: "WHERE deleted = ? ORDER BY id DESC, jsonb ->> '$.baz' ASC",
+      args: [0],
+    };
+    const queryBuilder = new RxStoragePESQLiteQueryBuilder(collectionSchema3);
+    const query = Object.assign({}, preparedQuery3);
+    query.query = {
+      selector: { _deleted: false },
+      sort: [{ foo: "desc" }, { baz: "asc" }],
+      skip: 0,
+    };
+    expect(queryBuilder.queryAndArgsWithPreparedQuery(query)).toEqual(expected);
   });
 });
 
@@ -218,6 +271,62 @@ const preparedQuery2: PreparedQuery<RxDocumentData<TestRxDocType2>> = {
   },
   queryPlan: {
     index: ["_deleted", "id"],
+    startKeys: [undefined, -9007199254740991],
+    endKeys: [undefined, "￿"],
+    inclusiveEnd: true,
+    inclusiveStart: true,
+    sortSatisfiedByIndex: true,
+    selectorSatisfiedByIndex: false,
+  },
+};
+
+interface TestRxDocType3 {
+  foo: string;
+  baz: boolean;
+}
+
+const collectionSchema3: RxJsonSchema<RxDocumentData<TestRxDocType3>> = {
+  version: 0,
+  primaryKey: "foo",
+  type: "object",
+  properties: {
+    _attachments: { type: "object" },
+    _deleted: { type: "boolean" },
+    _meta: {
+      additionalProperties: true,
+      properties: {
+        lwt: {
+          maximum: 1000000000000000,
+          minimum: 1,
+          multipleOf: 0.01,
+          type: "number",
+        },
+      },
+      required: ["lwt"],
+      type: "object",
+    },
+    _rev: { minLength: 1, type: "string" },
+    foo: { type: "string", maxLength: 10 },
+    baz: { type: "boolean" },
+  },
+  indexes: [
+    ["_deleted", "foo"],
+    ["_meta.lwt", "foo"],
+  ],
+  required: ["foo", "baz", "_deleted", "_rev", "_meta", "_attachments"],
+  additionalProperties: false,
+  sharding: { shards: 1, mode: "collection" },
+  keyCompression: false,
+  encrypted: [],
+};
+const preparedQuery3: PreparedQuery<RxDocumentData<TestRxDocType3>> = {
+  query: {
+    selector: {},
+    sort: [],
+    skip: 0,
+  },
+  queryPlan: {
+    index: ["_deleted", "foo"],
     startKeys: [undefined, -9007199254740991],
     endKeys: [undefined, "￿"],
     inclusiveEnd: true,

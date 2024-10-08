@@ -22,3 +22,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added enough working code so that collections are removable.
 - Added enough code so that some queries work
 - Added enough types that the TypeScript compiler is happy
+- Added handing for ORs in queries
+- Added handling for ORDER BY in queries

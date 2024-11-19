@@ -85,7 +85,7 @@ function isSqliteError(probableError: unknown): probableError is SqliteError {
   );
 }
 
-export interface RxStoragePESQLiteImpleBetterSQLite3Options {
+export interface RxStoragePESQLiteImplBetterSQLite3Options {
   fileMustExist?: boolean;
   nativeBinding?: string;
   readonly?: boolean;
@@ -113,7 +113,7 @@ export class RxStoragePESQLiteImplBetterSQLite3
    */
   constructor(
     public fileName?: string,
-    private options?: RxStoragePESQLiteImpleBetterSQLite3Options,
+    private options?: RxStoragePESQLiteImplBetterSQLite3Options,
   ) {}
 
   async addCollection<RxDocType>(
@@ -139,7 +139,7 @@ export class RxStoragePESQLiteImplBetterSQLite3
         const collectionTableName = this.tableNameWithCollectionName(
           collectionDocument.data.name,
         );
-        createDocumentTableAndIndexsWithTableName(
+        createDocumentTableAndIndexesWithTableName(
           this.connection(),
           collectionTableName,
         );
@@ -385,7 +385,7 @@ export class RxStoragePESQLiteImplBetterSQLite3
   }
 
   private migration0001(): void {
-    createDocumentTableAndIndexsWithTableName(
+    createDocumentTableAndIndexesWithTableName(
       this.connection(),
       RXDB_INTERNAL_TABLE,
     );
@@ -396,7 +396,7 @@ export class RxStoragePESQLiteImplBetterSQLite3
    * Because one RxStoragePESQLiteImpl can be used by multiple
    * RxStoragePESQLiteInstances and the RxStoragePESQLiteQueryBuilder is
    * specific to a RxJsonSchema<RxDocType> (a.k.a. a collection's schema), the
-   * RxStoragePESQLiteImple must handle multiple
+   * RxStoragePESQLiteImpl must handle multiple
    * RxStoragePESQLiteQueryBuilders.
    */
   private async queryBuilderWithCollectionSchema<RxDocType>(
@@ -431,12 +431,12 @@ export class RxStoragePESQLiteImplBetterSQLite3
 
 export function getPESQLiteImplBetterSQLite3(
   fileName?: string,
-  options?: RxStoragePESQLiteImpleBetterSQLite3Options,
+  options?: RxStoragePESQLiteImplBetterSQLite3Options,
 ) {
   return new RxStoragePESQLiteImplBetterSQLite3(fileName, options);
 }
 
-function createDocumentTableAndIndexsWithTableName(
+function createDocumentTableAndIndexesWithTableName(
   connection: DatabaseInterface,
   tableName: string,
 ) {

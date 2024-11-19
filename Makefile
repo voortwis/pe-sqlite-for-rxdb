@@ -16,5 +16,5 @@ clean dist format lint test:
 	$(pnpm_run) $@
 
 .PHONY: release
-release: clean lint format test dist
+release: clean format lint test dist
 	$(pnpm_pack)

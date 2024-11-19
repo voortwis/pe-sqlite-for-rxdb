@@ -254,4 +254,55 @@ describe("pe-sqlite-for-rxdb tests", () => {
     await myDatabase.todos.remove();
     expect(myDatabase.todos).toBeFalsy();
   });
+  it("can add multiple collections at once", async () => {
+    // Create the RxDatabase
+    const myDatabase = await createRxDatabase({
+      ignoreDuplicate: true, // for unit tests only; do not copy this to working code.
+      name: "my_database",
+      multiInstance: false,
+      storage: getRxStoragePESQLite(),
+    });
+    expect(myDatabase).toBeTruthy();
+
+    // Create an RxCollection
+    // Creating a schema for a collection
+    const collection1Schema = {
+      version: 0,
+      primaryKey: "id",
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          maxLength: 100,
+        },
+        name: {
+          type: "string",
+        },
+      },
+      required: ["id", "name"],
+    };
+    const collection2Schema = Object.assign({}, collection1Schema);
+
+    const addCollectionsObject = {
+      collection1: {
+        schema: collection1Schema,
+      },
+      collection2: {
+        schema: collection2Schema,
+      },
+    };
+
+    expect(myDatabase.collection1).toBeFalsy();
+    expect(myDatabase.collection2).toBeFalsy();
+    // Adding two RxCollections to the RxDatabase
+    await myDatabase.addCollections(addCollectionsObject);
+    expect(myDatabase.collection1).toBeTruthy();
+    expect(myDatabase.collection2).toBeTruthy();
+
+    // Removing the collections
+    await myDatabase.collection1.remove();
+    expect(myDatabase.collection1).toBeFalsy();
+    await myDatabase.collection2.remove();
+    expect(myDatabase.collection2).toBeFalsy();
+  });
 });

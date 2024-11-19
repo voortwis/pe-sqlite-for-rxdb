@@ -66,8 +66,8 @@ export class RxStoragePESQLiteInstance<RxDocType, CheckpointType = any>
   > = new Subject();
   private conflicts$: Subject<RxConflictResultionTask<RxDocType>> =
     new Subject();
+  private initComplete?: Promise<number>;
   private primaryField: StringKeys<RxDocType>;
-  private userKey: number = 0; // Used by the internals instance.
 
   public closed?: Promise<void>;
 
@@ -87,10 +87,9 @@ export class RxStoragePESQLiteInstance<RxDocType, CheckpointType = any>
 
     this.internals.then(
       (impl: RxStoragePESQLiteImpl) => {
-        impl.init(this.databaseName, collectionName).then(
-          (userKey: number) => {
-            this.userKey = userKey;
-          },
+        this.initComplete = impl.init(this.databaseName, collectionName);
+        this.initComplete.then(
+          (_userKey: number) => {}, // The userKey is used when closing the storage instance.
           (reason?: unknown) => {
             console.log(`Failed to initialize SQLite database: ${reason}`);
             throw reason;
@@ -116,16 +115,13 @@ export class RxStoragePESQLiteInstance<RxDocType, CheckpointType = any>
 
     const internals = await this.internals;
 
-    if (
-      context === "rx-database-add-collection" &&
-      documentWrites.length === 1
-    ) {
-      const addCollectionResult = await internals.addCollection<RxDocType>(
+    if (context === "rx-database-add-collection") {
+      const addCollectionsResult = await internals.addCollections<RxDocType>(
         this.collectionName,
         getDocumentId,
         documentWrites,
       );
-      return Promise.resolve(addCollectionResult);
+      return Promise.resolve(addCollectionsResult);
     } else if (
       context === "internal-add-storage-token" ||
       context === "rx-collection-bulk-insert" ||
@@ -172,8 +168,12 @@ export class RxStoragePESQLiteInstance<RxDocType, CheckpointType = any>
     }
     this.closed = (async () => {
       this.changes$.complete();
-      await (await this.internals).close(this.userKey);
-      this.userKey = 0;
+      const userKey = await this.initComplete;
+      if (typeof userKey === "number") {
+        await (await this.internals).close(userKey);
+      } else {
+        throw new Error("Unable to close PESQLiteImpl: no userKey");
+      }
     })();
     return this.closed;
   }

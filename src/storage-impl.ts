@@ -26,7 +26,7 @@ import type { DocumentIdGetter } from "./types";
 
 export interface RxStoragePESQLiteImpl {
   close(userKey: number): Promise<void>;
-  addCollection<RxDocType>(
+  addCollections<RxDocType>(
     collectionName: string,
     getDocumentId: DocumentIdGetter<RxDocType>,
     bulkWrites: BulkWriteRow<RxDocType>[],

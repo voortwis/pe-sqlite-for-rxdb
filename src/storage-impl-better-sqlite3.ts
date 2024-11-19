@@ -116,16 +116,12 @@ export class RxStoragePESQLiteImplBetterSQLite3
     private options?: RxStoragePESQLiteImplBetterSQLite3Options,
   ) {}
 
-  async addCollection<RxDocType>(
+  async addCollections<RxDocType>(
     collectionName: string,
     getDocumentId: DocumentIdGetter<RxDocType>,
     bulkWrites: BulkWriteRow<RxDocType>[],
   ): Promise<RxStorageBulkWriteResponse<RxDocType>> {
     try {
-      if (bulkWrites.length !== 1) {
-        throw new Error("addCollection() should only insert one document");
-      }
-
       const bulkWriteResult = await this.bulkWrite(
         collectionName,
         getDocumentId,
@@ -134,26 +130,32 @@ export class RxStoragePESQLiteImplBetterSQLite3
       if (bulkWriteResult.error.length == 1) {
         return Promise.resolve(bulkWriteResult);
       }
-      const collectionDocument = bulkWrites[0].document;
-      if (isInternalStoreCollectionDocType(collectionDocument)) {
-        const collectionTableName = this.tableNameWithCollectionName(
-          collectionDocument.data.name,
-        );
-        createDocumentTableAndIndexesWithTableName(
-          this.connection(),
-          collectionTableName,
-        );
-
-        return Promise.resolve(bulkWriteResult);
-      } else {
-        console.error(
-          "Collection document is not an InternalStoreCollectionDocType",
-        );
-        console.dir(collectionDocument, { depth: null });
-        throw new Error(
-          "Expected a collection document to be an InternalStoreCollectionDocType.",
-        );
-      }
+      const addCollectionTablesAndIndexes = this.connection().transaction(
+        (collectionDocuments: BulkWriteRow<RxDocType>[]) => {
+          for (let i = 0; i < collectionDocuments.length; i++) {
+            const collectionDocument = collectionDocuments[i].document;
+            if (isInternalStoreCollectionDocType(collectionDocument)) {
+              const collectionTableName = this.tableNameWithCollectionName(
+                collectionDocument.data.name,
+              );
+              createDocumentTableAndIndexesWithTableName(
+                this.connection(),
+                collectionTableName,
+              );
+            } else {
+              console.error(
+                "Collection document is not an InternalStoreCollectionDocType",
+              );
+              console.dir(collectionDocument, { depth: null });
+              throw new Error(
+                "Expected a collection document to be an InternalStoreCollectionDocType.",
+              );
+            }
+          }
+        },
+      );
+      addCollectionTablesAndIndexes(bulkWrites);
+      return Promise.resolve(bulkWriteResult);
     } catch (err: unknown) {
       return Promise.reject(err);
     }
@@ -279,7 +281,16 @@ export class RxStoragePESQLiteImplBetterSQLite3
       this.connectWithDatabaseName(databaseName);
       this.configureSQLite();
       this.initializeDatabase();
-      const userKey = Date.now();
+      let userKey = Date.now();
+      let possibleDuplicate = this.userMap.get(userKey);
+      // Check for duplicates.  This happens in some of the quicker tests.
+      while (
+        possibleDuplicate !== undefined &&
+        possibleDuplicate !== collectionName
+      ) {
+        userKey++;
+        possibleDuplicate = this.userMap.get(userKey);
+      }
       this.userMap.set(userKey, collectionName);
       return Promise.resolve(userKey);
     } catch (err: unknown) {
@@ -474,18 +485,40 @@ function createDocumentTableAndIndexesWithTableName(
       }
     }
   }
-  const sql2 = connection.prepare(
-    [
-      "CREATE INDEX idx_" + tableName + "_deleted_id\n",
-      "\tON " + tableName + "(deleted, id);",
-    ].join(""),
-  );
-  sql2.run();
-  const sql3 = connection.prepare(
-    [
-      "CREATE INDEX idx_" + tableName + "_mtime_ms_id\n",
-      "\tON " + tableName + "(mtime_ms, id);",
-    ].join(""),
-  );
-  sql3.run();
+  try {
+    const sql2 = connection.prepare(
+      [
+        "CREATE INDEX idx_" + tableName + "_deleted_id\n",
+        "\tON " + tableName + "(deleted, id);",
+      ].join(""),
+    );
+    sql2.run();
+  } catch (err: unknown) {
+    if (isSqliteError(err)) {
+      if (
+        err.message !==
+        "index idx_" + tableName + "_deleted_id already exists"
+      ) {
+        throw err;
+      }
+    }
+  }
+  try {
+    const sql3 = connection.prepare(
+      [
+        "CREATE INDEX idx_" + tableName + "_mtime_ms_id\n",
+        "\tON " + tableName + "(mtime_ms, id);",
+      ].join(""),
+    );
+    sql3.run();
+  } catch (err: unknown) {
+    if (isSqliteError(err)) {
+      if (
+        err.message !==
+        "index idx_" + tableName + "_mtime_ms_id already exists"
+      ) {
+        throw err;
+      }
+    }
+  }
 }

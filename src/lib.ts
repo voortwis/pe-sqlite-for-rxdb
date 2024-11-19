@@ -16,7 +16,6 @@
 
 export * from "./storage";
 export * from "./storage-impl";
-export * from "./storage-impl-better-sqlite3";
 export * from "./storage-instance";
 export * from "./storage-instance-options";
 export * from "./storage-internals";

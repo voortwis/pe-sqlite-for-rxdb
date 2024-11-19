@@ -5,6 +5,12 @@ This package contains plugins for RxDB which store RxDocuments in SQLite.
 This package is not written by, approved by or affiliated with Daniel Meyer or
 the RxDB team. Please do not contact RxDB for help with this software.
 
+## Usage
+
+Because vite (or rollup) does not play nicely with `better-sqlite3`, please
+include `better-sqlite3` as a dependency or devDependency in any project that
+uses pe-sqlite-for-rxdb.
+
 ## License
 
 This program is free software: you can redistribute it and/or modify it under

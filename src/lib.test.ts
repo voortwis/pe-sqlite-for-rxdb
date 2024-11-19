@@ -23,11 +23,7 @@ import type { RxStoragePESQLite } from "./lib";
 
 import { addRxPlugin, createRxDatabase, toTypedRxJsonSchema } from "rxdb";
 import { describe, expect, it } from "vitest";
-import {
-  getInternalsWithImpl,
-  getPESQLiteImplBetterSQLite3,
-  getRxStoragePESQLite,
-} from "./lib";
+import { getInternalsWithImpl, getRxStoragePESQLite } from "./lib";
 
 import { RxDBDevModePlugin } from "rxdb/plugins/dev-mode";
 addRxPlugin(RxDBDevModePlugin);
@@ -153,6 +149,9 @@ describe("pe-sqlite-for-rxdb tests", () => {
     expect(foundDocuments.length).toEqual(1);
   });
   it("accepts options for better-sqlite3", async () => {
+    const betterSQLite3ImplModule = await import(
+      "./storage-impl-better-sqlite3"
+    );
     const betterSQLite3Options: DatabaseOptions = {
       readonly: false, // default: false
       fileMustExist: false, // default: false
@@ -164,7 +163,10 @@ describe("pe-sqlite-for-rxdb tests", () => {
     const fileName = "my_database.sqlite3";
     const databaseStorage = getRxStoragePESQLite({
       sqliteInternals: getInternalsWithImpl(
-        getPESQLiteImplBetterSQLite3(fileName, betterSQLite3Options),
+        betterSQLite3ImplModule.getPESQLiteImplBetterSQLite3(
+          fileName,
+          betterSQLite3Options,
+        ),
       ),
     });
 

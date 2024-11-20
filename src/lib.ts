@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 export * from "./storage";
+export * from "./storage-checkpoint";
 export * from "./storage-impl";
 export * from "./storage-instance";
 export * from "./storage-instance-options";

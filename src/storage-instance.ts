@@ -32,6 +32,7 @@ import type {
   StringKeys,
 } from "rxdb";
 import type { Observable } from "rxjs";
+import type { RxStoragePESQLiteCheckpoint } from "./storage-checkpoint";
 import type { RxStoragePESQLiteImpl } from "./storage-impl";
 import type { RxStoragePESQLiteInstanceCreationOptions } from "./storage-instance-options";
 import type { RxStoragePESQLiteOptions } from "./storage-options";
@@ -43,7 +44,7 @@ import { RxStoragePESQLiteInternals } from "./storage-internals";
 
 interface NotRxStorageChangedDocumentsSinceResult<RxDocType, CheckpointType> {
   documents: RxDocumentData<RxDocType>[];
-  checkpoint: CheckpointType;
+  checkpoint: RxStoragePESQLiteCheckpoint;
 }
 
 /**
@@ -52,17 +53,20 @@ interface NotRxStorageChangedDocumentsSinceResult<RxDocType, CheckpointType> {
  * exist, sharing the same underlying RxStoragePESQLiteInternals (which maps to
  * an RxStoragePESQLiteImpl).
  */
-export class RxStoragePESQLiteInstance<RxDocType, CheckpointType = any>
+export class RxStoragePESQLiteInstance<RxDocType>
   implements
     RxStorageInstance<
       RxDocType,
       RxStoragePESQLiteInternals,
       RxStoragePESQLiteInstanceCreationOptions,
-      CheckpointType
+      RxStoragePESQLiteCheckpoint
     >
 {
   private changes$: Subject<
-    EventBulk<RxStorageChangeEvent<RxDocumentData<RxDocType>>, CheckpointType>
+    EventBulk<
+      RxStorageChangeEvent<RxDocumentData<RxDocType>>,
+      RxStoragePESQLiteCheckpoint
+    >
   > = new Subject();
   private conflicts$: Subject<RxConflictResultionTask<RxDocType>> =
     new Subject();
@@ -150,7 +154,10 @@ export class RxStoragePESQLiteInstance<RxDocType, CheckpointType = any>
   }
 
   changeStream(): Observable<
-    EventBulk<RxStorageChangeEvent<RxDocumentData<RxDocType>>, CheckpointType>
+    EventBulk<
+      RxStorageChangeEvent<RxDocumentData<RxDocType>>,
+      RxStoragePESQLiteCheckpoint
+    >
   > {
     console.log(`changeStream(collection=${this.collectionName})`);
     return this.changes$.asObservable();
@@ -215,11 +222,11 @@ export class RxStoragePESQLiteInstance<RxDocType, CheckpointType = any>
 
   getChangedDocumentsSince(
     _limit: number,
-    _checkpoint: CheckpointType,
+    _checkpoint: RxStoragePESQLiteCheckpoint,
   ): Promise<
     NotRxStorageChangedDocumentsSinceResult<
       RxDocumentData<RxDocType>,
-      CheckpointType
+      RxStoragePESQLiteCheckpoint
     >
   > {
     console.log(

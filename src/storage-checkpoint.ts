@@ -14,9 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-export class RxStoragePESQLiteCheckpoint {
-  constructor(
-    public readonly key: string,
-    public readonly timestamp: number,
-  ) {}
+export interface RxStoragePESQLiteCheckpoint {
+  key: string;
+  timestamp: number;
 }

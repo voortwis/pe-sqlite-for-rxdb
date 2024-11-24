@@ -43,11 +43,6 @@ import { now, randomCouchString } from "rxdb/plugins/utils";
 import { Subject } from "rxjs";
 import { RxStoragePESQLiteInternals } from "./storage-internals";
 
-interface NotRxStorageChangedDocumentsSinceResult<RxDocType, CheckpointType> {
-  documents: RxDocumentData<RxDocType>[];
-  checkpoint: RxStoragePESQLiteCheckpoint;
-}
-
 /**
  * RxStoragePESQLiteInstance provides the interface between an RxDB collection
  * and a storage provider.  This means that several instances of this class
@@ -284,21 +279,6 @@ export class RxStoragePESQLiteInstance<RxDocType>
       `Unhandled getAttachmentData() for collection (${this.collectionName})`,
     );
     return Promise.resolve("");
-  }
-
-  getChangedDocumentsSince(
-    _limit: number,
-    _checkpoint: RxStoragePESQLiteCheckpoint,
-  ): Promise<
-    NotRxStorageChangedDocumentsSinceResult<
-      RxDocumentData<RxDocType>,
-      RxStoragePESQLiteCheckpoint
-    >
-  > {
-    console.log(
-      `Unhandled getChangedDocumentsSince() for collection (${this.collectionName})`,
-    );
-    return Promise.reject(new Error("Not implemented"));
   }
 
   async query(

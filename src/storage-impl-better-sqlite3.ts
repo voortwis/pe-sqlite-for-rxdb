@@ -16,9 +16,9 @@
 
 import type {
   BulkWriteRow,
+  FilledMangoQuery,
   InternalStoreCollectionDocType,
   InternalStoreDocType,
-  PreparedQuery,
   RxDocumentData,
   RxJsonSchema,
   RxStorageQueryResult,
@@ -329,13 +329,13 @@ export class RxStoragePESQLiteImplBetterSQLite3
   async query<RxDocType>(
     collectionName: string,
     collectionSchema: RxJsonSchema<RxDocumentData<RxDocType>>,
-    preparedQuery: PreparedQuery<RxDocType>,
+    filledMangoQuery: FilledMangoQuery<RxDocType>,
   ): Promise<RxStorageQueryResult<RxDocType>> {
     const tableName = this.tableNameWithCollectionName(collectionName);
     const queryBuilder =
       await this.queryBuilderWithCollectionSchema(collectionSchema);
     const queryAndArgs =
-      queryBuilder.queryAndArgsWithPreparedQuery(preparedQuery);
+      queryBuilder.queryAndArgsWithFilledMangoQuery(filledMangoQuery);
     const sql1 = this.connection().prepare(
       [
         "SELECT id, json(jsonb) AS json, deleted, rev, mtime_ms\n",

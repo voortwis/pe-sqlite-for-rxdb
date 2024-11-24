@@ -16,10 +16,10 @@
 
 import type {
   JsonSchema,
+  FilledMangoQuery,
   MangoQuerySelector,
   MangoQuerySortPart,
   Paths,
-  PreparedQuery,
   RxDocumentData,
   RxJsonSchema,
   StringKeys,
@@ -68,14 +68,14 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     return this._columnMap;
   }
 
-  queryAndArgsWithPreparedQuery(
-    preparedQuery: PreparedQuery<RxDocType>,
+  queryAndArgsWithFilledMangoQuery(
+    filledMangoQuery: FilledMangoQuery<RxDocType>,
   ): QueryAndArgs {
     const rootPath = "" as Paths<RxDocumentData<RxDocType>>;
     const selector: MangoQuerySelector<RxDocumentData<RxDocType>> =
-      preparedQuery.query.selector;
+      filledMangoQuery.selector;
     const whereConditions = this.operatorAndObject(rootPath, selector);
-    const orderBy = this.orderByWithPreparedQuery(preparedQuery);
+    const orderBy = this.orderByWithFilledMangoQuery(filledMangoQuery);
     return this.queryAndArgsWithWhereConditionsAndOrderBy(
       whereConditions,
       orderBy,
@@ -249,6 +249,8 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
               conditions.push(this.operatorAndArray(prefix, value));
             } else if (key === "$or") {
               conditions.push(this.operatorOrArray(prefix, value));
+            } else if (key === "$in") {
+              conditions.push(this.operatorInArray(prefix, value));
             } else {
               throw new Error(
                 `1.Unable to handle key ${key} with value Array ${value}`,
@@ -327,6 +329,40 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     throw new Error(`Unable to process query for prefix: ${prefix}`);
   }
 
+  private operatorInArray(
+    prefix: Paths<RxDocumentData<RxDocType>>,
+    selector: MangoQuerySelector<RxDocumentData<RxDocType>>[],
+  ): WhereConditions {
+    if (!Array.isArray(selector)) {
+      throw new Error(`Operator $in requires an array argument: ${selector}`);
+    }
+    const columnInfo = this.columnMap.get(prefix);
+    let left: string;
+    if (columnInfo?.column) {
+      left = columnInfo.column;
+    } else if (columnInfo?.jsonPath) {
+      const jsonTransform = columnInfo.type === "boolean" ? "->" : "->>";
+      left = `jsonb ${jsonTransform} '${columnInfo.jsonPath}'`;
+    } else {
+      console.error(`Query prefix ${prefix} not present in columnMap`);
+      console.dir(this.columnMap);
+      throw new Error(`Query prefix ${prefix} not present in columnMap`);
+    }
+    const questionMarks = selector.map(() => "?").join(", ");
+    const args = selector.map(
+      (currentSelector) =>
+        this.argsWithMangoQuerySelector(
+          currentSelector,
+          !!columnInfo?.jsonPath,
+        )[0],
+    );
+    const result: WhereConditions = {
+      condition: `${left} IN (${questionMarks})`,
+      args,
+    };
+    return result;
+  }
+
   private operatorOrArray(
     prefix: Paths<RxDocumentData<RxDocType>>,
     selector: MangoQuerySelector<RxDocumentData<RxDocType>>[],
@@ -355,13 +391,13 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     return this.joinConditionsOr(conditions);
   }
 
-  private orderByWithPreparedQuery(
-    preparedQuery: PreparedQuery<RxDocType>,
+  private orderByWithFilledMangoQuery(
+    filledMangoQuery: FilledMangoQuery<RxDocType>,
   ): OrderByClause {
     const parts: string[] = [];
-    for (let i = 0; i < preparedQuery.query.sort.length; i++) {
+    for (let i = 0; i < filledMangoQuery.sort.length; i++) {
       const sortKey: MangoQuerySortPart<RxDocumentData<RxDocType>> =
-        preparedQuery.query.sort[i];
+        filledMangoQuery.sort[i];
       for (const [k, value] of Object.entries(sortKey)) {
         const key = k as Paths<RxDocumentData<RxDocType>>;
         const columnInfo = this.columnMap.get(key);

@@ -16,7 +16,7 @@
 
 import type {
   BulkWriteRow,
-  PreparedQuery,
+  FilledMangoQuery,
   RxDocumentData,
   RxJsonSchema,
   RxStorageQueryResult,
@@ -39,7 +39,7 @@ export interface RxStoragePESQLiteImpl {
   query<RxDocType>(
     collectionName: string,
     collectionSchema: RxJsonSchema<RxDocumentData<RxDocType>>,
-    preparedQuery: PreparedQuery<RxDocType>,
+    filledMangoQuery: FilledMangoQuery<RxDocType>,
   ): Promise<RxStorageQueryResult<RxDocType>>;
   removeCollection(collectionName: string): Promise<void>;
   whichBackend(): string;

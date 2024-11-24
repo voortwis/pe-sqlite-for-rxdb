@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import type { PreparedQuery, RxDocumentData, RxJsonSchema } from "rxdb";
+import type { FilledMangoQuery, RxDocumentData, RxJsonSchema } from "rxdb";
 import type { QueryAndArgs } from "./query-sqlite3";
 
 import { describe, expect, it } from "vitest";
@@ -30,9 +30,9 @@ describe("query-sqlite3 tests", () => {
       query: expectedQuery,
     };
     const queryBuilder = new RxStoragePESQLiteQueryBuilder(collectionSchema1);
-    expect(queryBuilder.queryAndArgsWithPreparedQuery(preparedQuery1)).toEqual(
-      expected,
-    );
+    expect(
+      queryBuilder.queryAndArgsWithFilledMangoQuery(filledMangoQuery1),
+    ).toEqual(expected);
   });
   it("finds all internal documents", () => {
     const expectedQuery =
@@ -43,9 +43,9 @@ describe("query-sqlite3 tests", () => {
       query: expectedQuery,
     };
     const queryBuilder = new RxStoragePESQLiteQueryBuilder(collectionSchema2);
-    expect(queryBuilder.queryAndArgsWithPreparedQuery(preparedQuery2)).toEqual(
-      expected,
-    );
+    expect(
+      queryBuilder.queryAndArgsWithFilledMangoQuery(filledMangoQuery2),
+    ).toEqual(expected);
   });
   it("builds a column information map correctly", () => {
     const expected = new Map([
@@ -106,21 +106,24 @@ describe("query-sqlite3 tests", () => {
   });
   it("can handle all kinds of ANDs", () => {
     const expected = {
-      query: "WHERE id = ? AND jsonb -> '$.baz' = ? ORDER BY id ASC",
-      args: ["bar", "true"],
+      query: "WHERE id = ? AND jsonb ->> '$.baz' = ? ORDER BY id ASC",
+      args: ["bar", 42],
     };
     const queryBuilder = new RxStoragePESQLiteQueryBuilder(collectionSchema3);
-    const query = Object.assign({}, preparedQuery3);
-    query.query = {
-      selector: { foo: "bar", baz: true },
-      sort: [{ foo: "asc" }],
+    const query: FilledMangoQuery<TestRxDocType3> = {
+      selector: { foo: "bar", baz: 42 },
+      sort: [{ foo: "asc" as const }],
       skip: 0,
     };
-    expect(queryBuilder.queryAndArgsWithPreparedQuery(query)).toEqual(expected);
-    query.query.selector = {
-      $and: [{ foo: { $eq: "bar" } }, { baz: { $eq: true } }],
+    expect(queryBuilder.queryAndArgsWithFilledMangoQuery(query)).toEqual(
+      expected,
+    );
+    query.selector = {
+      $and: [{ foo: { $eq: "bar" } }, { baz: { $eq: 42 } }],
     };
-    expect(queryBuilder.queryAndArgsWithPreparedQuery(query)).toEqual(expected);
+    expect(queryBuilder.queryAndArgsWithFilledMangoQuery(query)).toEqual(
+      expected,
+    );
   });
   it("can order results", () => {
     const expected = {
@@ -128,13 +131,45 @@ describe("query-sqlite3 tests", () => {
       args: [0],
     };
     const queryBuilder = new RxStoragePESQLiteQueryBuilder(collectionSchema3);
-    const query = Object.assign({}, preparedQuery3);
-    query.query = {
+    const query: FilledMangoQuery<TestRxDocType3> = {
       selector: { _deleted: false },
-      sort: [{ foo: "desc" }, { baz: "asc" }],
+      sort: [{ foo: "desc" as const }, { baz: "asc" as const }],
       skip: 0,
     };
-    expect(queryBuilder.queryAndArgsWithPreparedQuery(query)).toEqual(expected);
+    expect(queryBuilder.queryAndArgsWithFilledMangoQuery(query)).toEqual(
+      expected,
+    );
+  });
+  it("can query values IN an array", () => {
+    // color is the primary key.
+    const expected1 = {
+      query: "WHERE id IN (?, ?, ?) ORDER BY id ASC",
+      args: ["blue", "red", "green"],
+    };
+    const queryBuilder1 = new RxStoragePESQLiteQueryBuilder(color1Schema);
+    const query1: FilledMangoQuery<TestColor1Type> = {
+      selector: { color: { $in: ["blue", "red", "green"] } },
+      sort: [{ color: "asc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder1.queryAndArgsWithFilledMangoQuery(query1)).toEqual(
+      expected1,
+    );
+    // Now, where color is not the primary key.
+    const expected2 = {
+      query:
+        "WHERE jsonb ->> '$.color' IN (?, ?, ?) ORDER BY jsonb ->> '$.color' DESC",
+      args: ["blue", "red", "green"],
+    };
+    const queryBuilder2 = new RxStoragePESQLiteQueryBuilder(color2Schema);
+    const query2: FilledMangoQuery<TestColor2Type> = {
+      selector: { color: { $in: ["blue", "red", "green"] } },
+      sort: [{ color: "desc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder2.queryAndArgsWithFilledMangoQuery(query2)).toEqual(
+      expected2,
+    );
   });
 });
 
@@ -190,21 +225,10 @@ const collectionSchema1: RxJsonSchema<RxDocumentData<TestRxDocType1>> = {
   version: 0,
 };
 
-const preparedQuery1: PreparedQuery<RxDocumentData<TestRxDocType1>> = {
-  query: {
-    selector: { done: { $eq: false }, _deleted: { $eq: false } },
-    sort: [{ id: "asc" }],
-    skip: 0,
-  },
-  queryPlan: {
-    index: ["_deleted", "id"],
-    startKeys: [undefined, -9007199254740991],
-    endKeys: [undefined, "￿"],
-    inclusiveEnd: true,
-    inclusiveStart: true,
-    sortSatisfiedByIndex: true,
-    selectorSatisfiedByIndex: false,
-  },
+const filledMangoQuery1: FilledMangoQuery<RxDocumentData<TestRxDocType1>> = {
+  selector: { done: { $eq: false }, _deleted: { $eq: false } },
+  sort: [{ id: "asc" }],
+  skip: 0,
 };
 
 interface TestRxDocType2 {
@@ -263,26 +287,15 @@ const collectionSchema2: RxJsonSchema<RxDocumentData<TestRxDocType2>> = {
   keyCompression: false,
   encrypted: [],
 };
-const preparedQuery2: PreparedQuery<RxDocumentData<TestRxDocType2>> = {
-  query: {
-    selector: { context: "collection", _deleted: { $eq: false } },
-    sort: [{ id: "asc" }],
-    skip: 0,
-  },
-  queryPlan: {
-    index: ["_deleted", "id"],
-    startKeys: [undefined, -9007199254740991],
-    endKeys: [undefined, "￿"],
-    inclusiveEnd: true,
-    inclusiveStart: true,
-    sortSatisfiedByIndex: true,
-    selectorSatisfiedByIndex: false,
-  },
+const filledMangoQuery2: FilledMangoQuery<RxDocumentData<TestRxDocType2>> = {
+  selector: { context: "collection", _deleted: { $eq: false } },
+  sort: [{ id: "asc" }],
+  skip: 0,
 };
 
 interface TestRxDocType3 {
   foo: string;
-  baz: boolean;
+  baz: number;
 }
 
 const collectionSchema3: RxJsonSchema<RxDocumentData<TestRxDocType3>> = {
@@ -307,7 +320,7 @@ const collectionSchema3: RxJsonSchema<RxDocumentData<TestRxDocType3>> = {
     },
     _rev: { minLength: 1, type: "string" },
     foo: { type: "string", maxLength: 10 },
-    baz: { type: "boolean" },
+    baz: { type: "number" },
   },
   indexes: [
     ["_deleted", "foo"],
@@ -319,19 +332,81 @@ const collectionSchema3: RxJsonSchema<RxDocumentData<TestRxDocType3>> = {
   keyCompression: false,
   encrypted: [],
 };
-const preparedQuery3: PreparedQuery<RxDocumentData<TestRxDocType3>> = {
-  query: {
-    selector: {},
-    sort: [],
-    skip: 0,
+
+interface TestColor1Type {
+  color: string;
+}
+
+const color1Schema: RxJsonSchema<RxDocumentData<TestColor1Type>> = {
+  version: 0,
+  primaryKey: "color",
+  type: "object",
+  properties: {
+    _attachments: { type: "object" },
+    _deleted: { type: "boolean" },
+    _meta: {
+      additionalProperties: true,
+      properties: {
+        lwt: {
+          maximum: 1000000000000000,
+          minimum: 1,
+          multipleOf: 0.01,
+          type: "number",
+        },
+      },
+      required: ["lwt"],
+      type: "object",
+    },
+    _rev: { minLength: 1, type: "string" },
+    color: { type: "string", maxLength: 10 },
   },
-  queryPlan: {
-    index: ["_deleted", "foo"],
-    startKeys: [undefined, -9007199254740991],
-    endKeys: [undefined, "￿"],
-    inclusiveEnd: true,
-    inclusiveStart: true,
-    sortSatisfiedByIndex: true,
-    selectorSatisfiedByIndex: false,
+  indexes: [
+    ["_deleted", "color"],
+    ["_meta.lwt", "color"],
+  ],
+  required: ["color", "_deleted", "_rev", "_meta", "_attachments"],
+  additionalProperties: false,
+  sharding: { shards: 1, mode: "collection" },
+  keyCompression: false,
+  encrypted: [],
+};
+
+interface TestColor2Type {
+  pk: string;
+  color: string;
+}
+
+const color2Schema: RxJsonSchema<RxDocumentData<TestColor2Type>> = {
+  version: 0,
+  primaryKey: "pk",
+  type: "object",
+  properties: {
+    _attachments: { type: "object" },
+    _deleted: { type: "boolean" },
+    _meta: {
+      additionalProperties: true,
+      properties: {
+        lwt: {
+          maximum: 1000000000000000,
+          minimum: 1,
+          multipleOf: 0.01,
+          type: "number",
+        },
+      },
+      required: ["lwt"],
+      type: "object",
+    },
+    _rev: { minLength: 1, type: "string" },
+    color: { type: "string", maxLength: 10 },
+    pk: { type: "string", maxLength: 10 },
   },
+  indexes: [
+    ["_deleted", "pk"],
+    ["_meta.lwt", "pk"],
+  ],
+  required: ["color", "_deleted", "pk", "_rev", "_meta", "_attachments"],
+  additionalProperties: false,
+  sharding: { shards: 1, mode: "collection" },
+  keyCompression: false,
+  encrypted: [],
 };

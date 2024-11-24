@@ -425,4 +425,46 @@ describe("pe-sqlite-for-rxdb tests", () => {
     await insertSubscriptionCheck;
     await myDatabase.thing.remove();
   });
+  it("can get documents by an identifier", async () => {
+    // Create the RxDatabase
+    const myDatabase = await createRxDatabase({
+      ignoreDuplicate: true, // for unit tests only; do not copy this to working code.
+      name: "my_database",
+      multiInstance: false,
+      storage: getRxStoragePESQLite(),
+    });
+    expect(myDatabase).toBeTruthy();
+
+    // Create an RxCollection
+    // Creating a schema for a collection
+    const thing2Schema = {
+      version: 0,
+      primaryKey: "identifier",
+      type: "object",
+      properties: {
+        identifier: {
+          type: "string",
+          maxLength: 100,
+        },
+        name: {
+          type: "string",
+        },
+      },
+      required: ["identifier", "name"],
+    };
+    await myDatabase.addCollections({
+      thing2: {
+        schema: thing2Schema,
+      },
+    });
+    await myDatabase.thing2.bulkInsert([
+      {
+        identifier: "3",
+        name: "three",
+      },
+    ]);
+    const docMap = await myDatabase.thing2.findByIds(["3"]).exec();
+    const three = docMap.get("3");
+    expect(three).toMatchObject({ identifier: "3", name: "three" });
+  });
 });

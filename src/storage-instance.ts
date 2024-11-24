@@ -17,6 +17,9 @@
 import type {
   BulkWriteRow,
   EventBulk,
+  FilledMangoQuery,
+  MangoQueryOperators,
+  MangoQuerySelector,
   PreparedQuery,
   RxConflictResultionTask,
   RxConflictResultionTaskSolution,
@@ -89,7 +92,8 @@ export class RxStoragePESQLiteInstance<RxDocType>
       (impl: RxStoragePESQLiteImpl) => {
         this.initComplete = impl.init(this.databaseName, collectionName);
         this.initComplete.then(
-          (_userKey: number) => {}, // The userKey is used when closing the storage instance.
+          // _userKey is used when closing the storage instance.
+          (_userKey: number) => {}, // eslint-disable-line @typescript-eslint/no-unused-vars
           (reason?: unknown) => {
             console.log(`Failed to initialize SQLite database: ${reason}`);
             throw reason;
@@ -260,14 +264,47 @@ export class RxStoragePESQLiteInstance<RxDocType>
     });
   }
 
-  findDocumentsById(
-    _ids: string[],
-    _withDeleted: boolean,
+  async findDocumentsById(
+    ids: Array<StringKeys<RxDocType>>,
+    withDeleted: boolean,
   ): Promise<RxDocumentData<RxDocType>[]> {
-    console.log(
-      `Unhandled findDocumentsById() for collection (${this.collectionName})`,
+    // TODO: Replace this query with a dedicated method on RxStoragePESQLiteImpl.
+    const internals = await this.internals;
+    let querySelector: MangoQuerySelector<RxDocumentData<RxDocType>>;
+    const idsSelector: MangoQuerySelector<RxDocumentData<RxDocType>> =
+      fieldOperationValueSelector(
+        this.primaryField as StringKeys<
+          MangoQuerySelector<RxDocumentData<RxDocType>>
+        >,
+        "$in",
+        ids,
+      );
+    if (withDeleted) {
+      querySelector = idsSelector;
+    } else {
+      querySelector = arrayOperationValuesSelector("$and", [
+        idsSelector,
+        fieldOperationValueSelector(
+          "_deleted" as StringKeys<
+            MangoQuerySelector<RxDocumentData<RxDocType>>
+          >,
+          "$eq",
+          false,
+        ),
+      ]);
+    }
+    const filledMangoQuery: FilledMangoQuery<RxDocType> = {
+      selector: querySelector,
+      sort: [],
+      skip: 0,
+      limit: 0,
+    } as FilledMangoQuery<RxDocType>;
+    const queryResult = await internals.query(
+      this.collectionName,
+      this.schema,
+      filledMangoQuery,
     );
-    return Promise.resolve([]);
+    return queryResult.documents;
   }
 
   getAttachmentData(
@@ -286,18 +323,11 @@ export class RxStoragePESQLiteInstance<RxDocType>
   ): Promise<RxStorageQueryResult<RxDocType>> {
     const internals = await this.internals;
 
-    return internals.query(this.collectionName, this.schema, preparedQuery);
-    /*
-      .then((result) => {
-        console.log("Query:");
-        console.dir(preparedQuery.query, { depth: null });
-        console.log("Query plan:");
-        console.dir(preparedQuery.queryPlan, { depth: null });
-        console.log("Query result:");
-        console.dir(result, { depth: null });
-        return result;
-      });
-     */
+    return internals.query(
+      this.collectionName,
+      this.schema,
+      preparedQuery.query,
+    );
   }
 
   // Delete the storage instance for this collection.
@@ -337,4 +367,36 @@ export async function createRxStoragePESQLiteInstance<RxDocType>(
       schema,
     ),
   );
+}
+
+type MangoQueryOperatorsKeys = keyof MangoQueryOperators<any>;
+
+function fieldOperationValueSelector<V, S>(
+  field: StringKeys<MangoQuerySelector<S>>,
+  operation: MangoQueryOperatorsKeys,
+  value: V,
+  selector?: MangoQuerySelector<S>,
+): MangoQuerySelector<S> {
+  if (selector === undefined) {
+    selector = {} as MangoQuerySelector<S>;
+  }
+  const operationSelector = {} as MangoQueryOperators<any>;
+  operationSelector[operation] = value;
+  selector[field] = operationSelector;
+  return selector;
+}
+
+function arrayOperationValuesSelector<
+  V extends Array<MangoQuerySelector<S>>,
+  S,
+>(
+  operation: "$and" | "$or",
+  values: V,
+  selector?: MangoQuerySelector<S>,
+): MangoQuerySelector<S> {
+  if (selector === undefined) {
+    selector = {};
+  }
+  selector[operation] = values;
+  return selector;
 }

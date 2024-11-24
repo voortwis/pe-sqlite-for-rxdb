@@ -19,10 +19,9 @@ import type {
   PreparedQuery,
   RxDocumentData,
   RxJsonSchema,
-  RxStorageBulkWriteResponse,
   RxStorageQueryResult,
 } from "rxdb";
-import type { DocumentIdGetter } from "./types";
+import type { BulkWriteResponse, DocumentIdGetter } from "./types";
 
 export interface RxStoragePESQLiteImpl {
   close(userKey: number): Promise<void>;
@@ -30,12 +29,12 @@ export interface RxStoragePESQLiteImpl {
     collectionName: string,
     getDocumentId: DocumentIdGetter<RxDocType>,
     bulkWrites: BulkWriteRow<RxDocType>[],
-  ): Promise<RxStorageBulkWriteResponse<RxDocType>>;
+  ): Promise<BulkWriteResponse<RxDocType>>;
   bulkWrite<RxDocType>(
     collectionName: string,
     getDocumentId: DocumentIdGetter<RxDocType>,
     bulkWrites: BulkWriteRow<RxDocType>[],
-  ): Promise<RxStorageBulkWriteResponse<RxDocType>>;
+  ): Promise<BulkWriteResponse<RxDocType>>;
   init(databaseName: string, collectionName: string): Promise<number>;
   query<RxDocType>(
     collectionName: string,

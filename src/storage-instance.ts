@@ -39,6 +39,7 @@ import type { RxStoragePESQLiteOptions } from "./storage-options";
 import type { DocumentIdGetter } from "./types";
 
 import { getPrimaryFieldOfPrimaryKey } from "rxdb";
+import { now, randomCouchString } from "rxdb/plugins/utils";
 import { Subject } from "rxjs";
 import { RxStoragePESQLiteInternals } from "./storage-internals";
 
@@ -59,13 +60,13 @@ export class RxStoragePESQLiteInstance<RxDocType>
       RxDocType,
       RxStoragePESQLiteInternals,
       RxStoragePESQLiteInstanceCreationOptions,
-      RxStoragePESQLiteCheckpoint
+      RxStoragePESQLiteCheckpoint<RxDocType>
     >
 {
   private changes$: Subject<
     EventBulk<
       RxStorageChangeEvent<RxDocumentData<RxDocType>>,
-      RxStoragePESQLiteCheckpoint
+      RxStoragePESQLiteCheckpoint<RxDocType>
     >
   > = new Subject();
   private conflicts$: Subject<RxConflictResultionTask<RxDocType>> =
@@ -105,47 +106,112 @@ export class RxStoragePESQLiteInstance<RxDocType>
         throw reason;
       },
     );
+
+    this.changes$ = new Subject();
   }
 
   async bulkWrite(
     documentWrites: BulkWriteRow<RxDocType>[],
     context: string,
   ): Promise<RxStorageBulkWriteResponse<RxDocType>> {
-    const error: RxStorageWriteError<RxDocType>[] = [];
-    // success will go away in a later version of the interface.
-    const success: RxDocType[] = [];
+    // startTime is used for change events.
+    const startTime = now();
+    let error: RxStorageWriteError<RxDocType>[];
+    let success: Map<
+      RxDocType[StringKeys<RxDocType>],
+      RxDocumentData<RxDocType>
+    >;
     const getDocumentId: DocumentIdGetter<RxDocType> = (document: RxDocType) =>
       document[this.primaryField];
 
     const internals = await this.internals;
 
     if (context === "rx-database-add-collection") {
-      const addCollectionsResult = await internals.addCollections<RxDocType>(
+      ({ success, error } = await internals.addCollections<RxDocType>(
         this.collectionName,
         getDocumentId,
         documentWrites,
-      );
-      return Promise.resolve(addCollectionsResult);
+      ));
     } else if (
+      context === "incremental-write" ||
       context === "internal-add-storage-token" ||
       context === "rx-collection-bulk-insert" ||
       context === "rx-database-remove-collection-all" ||
       context === "rx-document-save-data" ||
       context === "rx-document-remove"
     ) {
-      const bulkWriteResult = await internals.bulkWrite<RxDocType>(
+      ({ success, error } = await internals.bulkWrite<RxDocType>(
         this.collectionName,
         getDocumentId,
         documentWrites,
-      );
-      return Promise.resolve(bulkWriteResult);
+      ));
     } else {
       console.log(
         `Unhandled context (${context}) for collection (${this.collectionName})`,
       );
+      success = new Map();
+      error = [];
     }
 
-    // TODO: Pass changes to this.changes$
+    const bulkChangeEvent = {
+      id: randomCouchString(10), // There is no documentation on this.
+      events: [],
+      checkpoint: {
+        key: "" as RxDocType[StringKeys<RxDocType>],
+        timestamp: 0,
+      },
+      context: context,
+      startTime: startTime,
+      endTime: 0,
+    } as EventBulk<
+      RxStorageChangeEvent<RxDocumentData<RxDocType>>,
+      RxStoragePESQLiteCheckpoint<RxDocType>
+    >;
+    const changeEvents = bulkChangeEvent.events;
+    for (let i = 0; i < documentWrites.length; i++) {
+      const write = documentWrites[i];
+      const document = write.document;
+      const documentId: RxDocType[StringKeys<RxDocType>] =
+        getDocumentId(document);
+      const documentData: RxDocumentData<RxDocType> | undefined =
+        success.get(documentId);
+      if (documentData === undefined) {
+        continue;
+      }
+      const documentDeleted: boolean = document._deleted;
+      const previousDocumentData = write.previous;
+      const previousDeleted = !!previousDocumentData?._deleted;
+
+      let operation: "DELETE" | "INSERT" | "UPDATE";
+      if (!documentDeleted && (previousDeleted || !previousDocumentData)) {
+        operation = "INSERT";
+      } else if (previousDocumentData && !previousDeleted && !documentDeleted) {
+        operation = "UPDATE";
+      } else if (documentDeleted) {
+        operation = "DELETE";
+      } else {
+        console.dir(documentData);
+        console.dir(previousDocumentData);
+        throw new Error(
+          `Unexpected operation: previousDeleted: ${previousDeleted}, documentDeleted: ${documentDeleted}`,
+        );
+      }
+      const changeEvent = {
+        documentId: documentId as string,
+        documentData,
+        operation,
+        previousDocumentData,
+      };
+      changeEvents.push(changeEvent);
+      bulkChangeEvent.checkpoint = {
+        key: documentId,
+        timestamp: documentData._meta.lwt,
+      };
+    }
+    bulkChangeEvent.endTime = now();
+    if (changeEvents.length > 0) {
+      this.changes$.next(bulkChangeEvent);
+    }
 
     return Promise.resolve({
       success,
@@ -156,7 +222,7 @@ export class RxStoragePESQLiteInstance<RxDocType>
   changeStream(): Observable<
     EventBulk<
       RxStorageChangeEvent<RxDocumentData<RxDocType>>,
-      RxStoragePESQLiteCheckpoint
+      RxStoragePESQLiteCheckpoint<RxDocType>
     >
   > {
     console.log(`changeStream(collection=${this.collectionName})`);

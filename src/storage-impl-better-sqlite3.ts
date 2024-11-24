@@ -24,10 +24,10 @@ import type {
   RxStorageQueryResult,
   RxStorageWriteError,
   RxStorageWriteErrorConflict,
-  RxStorageBulkWriteResponse,
+  StringKeys,
 } from "rxdb";
 import type { RxStoragePESQLiteImpl } from "./storage-impl";
-import type { DocumentIdGetter } from "./types";
+import type { BulkWriteResponse, DocumentIdGetter } from "./types";
 
 import { default as path } from "node:path";
 import {
@@ -67,6 +67,19 @@ function isInternalStoreCollectionDocType(
     Array.isArray(doc.data.connectedStorages) &&
     (typeof doc?.data?.migrationStatus === "undefined" ||
       typeof doc?.data?.migrationStatus === "object")
+  );
+}
+
+type SingleInsertResult = Array<{ json: string }>;
+
+function isSingleInsertResult(
+  probably: unknown,
+): probably is SingleInsertResult {
+  return (
+    Array.isArray(probably) &&
+    probably.length === 1 &&
+    typeof probably[0] === "object" &&
+    typeof probably[0].json === "string"
   );
 }
 
@@ -120,7 +133,7 @@ export class RxStoragePESQLiteImplBetterSQLite3
     collectionName: string,
     getDocumentId: DocumentIdGetter<RxDocType>,
     bulkWrites: BulkWriteRow<RxDocType>[],
-  ): Promise<RxStorageBulkWriteResponse<RxDocType>> {
+  ): Promise<BulkWriteResponse<RxDocType>> {
     try {
       const bulkWriteResult = await this.bulkWrite(
         collectionName,
@@ -165,11 +178,15 @@ export class RxStoragePESQLiteImplBetterSQLite3
     collectionName: string,
     getDocumentId: DocumentIdGetter<RxDocType>,
     bulkWrites: BulkWriteRow<RxDocType>[],
-  ): Promise<RxStorageBulkWriteResponse<RxDocType>> {
+  ): Promise<BulkWriteResponse<RxDocType>> {
     try {
       const connection = this.connection();
 
       const error: RxStorageWriteError<RxDocType>[] = [];
+      const success: Map<
+        RxDocType[StringKeys<RxDocType>],
+        RxDocumentData<RxDocType>
+      > = new Map();
       const tableName = this.tableNameWithCollectionName(collectionName);
 
       for (let writeIndex = 0; writeIndex < bulkWrites.length; writeIndex++) {
@@ -198,11 +215,13 @@ export class RxStoragePESQLiteImplBetterSQLite3
           "\tWHERE\n",
           `\t\trev = ?\n`,
         ].join("");
+        const sqlPart3 = ["RETURNING json(jsonb) AS json\n"].join("");
         const sqlString1 =
-          sqlPart1 + (previousVersionOfDocument ? sqlPart2 : "");
+          sqlPart1 + (previousVersionOfDocument ? sqlPart2 : "") + sqlPart3;
         const sql1 = connection.prepare(sqlString1);
+        const documentId = getDocumentId(newVersionOfDocument);
         const insertArgs = [
-          getDocumentId(newVersionOfDocument),
+          documentId,
           JSON.stringify(newVersionOfDocument),
           newVersionOfDocument._deleted ? 1 : 0,
           newVersionOfDocument._rev,
@@ -212,9 +231,19 @@ export class RxStoragePESQLiteImplBetterSQLite3
           insertArgs.push(previousVersionOfDocument._rev);
         }
         try {
-          const insertResult = sql1.run(insertArgs);
-          if (insertResult.changes !== 1) {
+          const unknownInsertResult = sql1.all(insertArgs);
+          if (unknownInsertResult.length !== 1) {
             throw new Error("Failed to insert document in SQLite database");
+          }
+          if (isSingleInsertResult(unknownInsertResult)) {
+            const insertedDocument = JSON.parse(
+              unknownInsertResult[0].json,
+            ) as RxDocumentData<RxDocType>;
+            success.set(documentId, insertedDocument);
+          } else {
+            console.error("unknownInsertResult is not an InsertResult");
+            console.dir(unknownInsertResult, { depth: null });
+            throw new Error("INSERT INTO database returned unknown type.");
           }
         } catch (err: unknown) {
           if (isSqliteError(err)) {
@@ -229,13 +258,11 @@ export class RxStoragePESQLiteImplBetterSQLite3
                 "WHERE id = ?",
               ].join("");
               const sql2 = connection.prepare(sqlString2);
-              const result2 = sql2.get([
-                getDocumentId(newVersionOfDocument),
-              ]) as { json: string };
+              const result2 = sql2.get([documentId]) as { json: string };
               const documentInDb = JSON.parse(result2.json);
               const conflict = {
                 attachmentId: "",
-                documentId: getDocumentId(newVersionOfDocument),
+                documentId: documentId,
                 documentInDb: documentInDb,
                 isError: true,
                 status: 409, // conflict
@@ -251,6 +278,7 @@ export class RxStoragePESQLiteImplBetterSQLite3
         }
       }
       return Promise.resolve({
+        success,
         error,
       });
     } catch (err: unknown) {

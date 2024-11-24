@@ -14,7 +14,18 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import type { JsonSchemaTypes, Paths, StringKeys } from "rxdb";
+import type {
+  JsonSchemaTypes,
+  Paths,
+  RxDocumentData,
+  RxStorageWriteError,
+  StringKeys,
+} from "rxdb";
+
+export type BulkWriteResponse<RxDocType> = {
+  success: Map<RxDocType[StringKeys<RxDocType>], RxDocumentData<RxDocType>>;
+  error: Array<RxStorageWriteError<RxDocType>>;
+};
 
 export interface ColumnInformation {
   column?: string;

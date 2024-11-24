@@ -17,6 +17,7 @@
 import type { Options as DatabaseOptions } from "better-sqlite3";
 import type {
   ExtractDocumentTypeFromTypedRxJsonSchema,
+  RxChangeEventInsert,
   RxJsonSchema,
 } from "rxdb";
 import type { RxStoragePESQLite } from "./lib";
@@ -304,5 +305,124 @@ describe("pe-sqlite-for-rxdb tests", () => {
     expect(myDatabase.collection1).toBeFalsy();
     await myDatabase.collection2.remove();
     expect(myDatabase.collection2).toBeFalsy();
+  });
+  it("reports changes", async () => {
+    // Create the RxDatabase
+    const myDatabase = await createRxDatabase({
+      ignoreDuplicate: true, // for unit tests only; do not copy this to working code.
+      name: "my_database",
+      multiInstance: false,
+      storage: getRxStoragePESQLite(),
+    });
+    expect(myDatabase).toBeTruthy();
+
+    // Create an RxCollection
+    // Creating a schema for a collection
+    const thingSchema = {
+      version: 0,
+      primaryKey: "id",
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          maxLength: 100,
+        },
+        name: {
+          type: "string",
+        },
+      },
+      required: ["id", "name"],
+    };
+    interface RxDocType {
+      id: string;
+      name: string;
+    }
+    await myDatabase.addCollections({
+      thing: {
+        schema: thingSchema,
+      },
+    });
+    const generalSubscriptionPromise = new Promise((resolve) => {
+      const subscription = myDatabase.thing.$.subscribe((changeEvent) => {
+        subscription.unsubscribe();
+        resolve(changeEvent);
+      });
+    });
+    expect(generalSubscriptionPromise).resolves.toMatchObject({
+      collectionName: "thing",
+      isLocal: false,
+      operation: "INSERT",
+    });
+    const insertSubscriptionPromise = new Promise((resolve) => {
+      const subscription = myDatabase.thing.insert$.subscribe(
+        (insertEvent: RxChangeEventInsert<RxDocType>) => {
+          subscription.unsubscribe();
+          resolve(insertEvent);
+        },
+      );
+    });
+    const insertSubscriptionCheck = insertSubscriptionPromise.then(
+      (value: unknown) => {
+        const insertEvent = value as RxChangeEventInsert<RxDocType>;
+        expect(insertEvent).toMatchObject({
+          collectionName: "thing",
+          isLocal: false,
+          operation: "INSERT",
+        });
+        expect(insertEvent.documentId).toMatch(/[123]/);
+      },
+    );
+    const updateSubscriptionPromise = new Promise((resolve) => {
+      const subscription = myDatabase.thing.update$.subscribe((updateEvent) => {
+        subscription.unsubscribe();
+        resolve(updateEvent);
+      });
+    });
+    expect(updateSubscriptionPromise).resolves.toMatchObject({
+      collectionName: "thing",
+      isLocal: false,
+      operation: "UPDATE",
+      documentId: "2",
+      documentData: {
+        id: "2",
+        name: "two, updated",
+      },
+    });
+    const removeSubscriptionPromise = new Promise((resolve) => {
+      myDatabase.thing.remove$.subscribe((removeEvent) => {
+        resolve(removeEvent);
+      });
+    });
+    expect(removeSubscriptionPromise).resolves.toMatchObject({
+      collectionName: "thing",
+      isLocal: false,
+      operation: "DELETE",
+      documentId: "2",
+      documentData: {
+        id: "2",
+        name: "two, updated",
+      },
+    });
+    await myDatabase.thing.bulkInsert([
+      {
+        id: "1",
+        name: "one",
+      },
+      {
+        id: "2",
+        name: "two",
+      },
+      {
+        id: "3",
+        name: "three",
+      },
+    ]);
+    const upsertResult = await myDatabase.thing.upsert({
+      id: "2",
+      name: "two, updated",
+    });
+    await upsertResult.remove();
+    await insertSubscriptionCheck;
+    await myDatabase.thing.remove();
   });
 });

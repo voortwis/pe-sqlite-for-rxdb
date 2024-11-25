@@ -35,6 +35,11 @@
     "rxdb": "^15.19.0",
     "rxjs": "^7.8.0"
   },
+  "pnpm": {
+    "overrides": {
+      "ws": ">=8.17.1"
+    }
+  },
   "scripts": {
     "clean": "rimraf dist pe-sqlite-for-rxdb-*.tgz",
     "dist": "tsc && vite build",

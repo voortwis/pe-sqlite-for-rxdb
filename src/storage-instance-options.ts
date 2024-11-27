@@ -14,4 +14,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-export interface RxStoragePESQLiteInstanceCreationOptions {}
+export type RxStoragePESQLiteInstanceCreationOptions = Partial<{
+  // This key exists to make eslint/tsc happy.  It is possible that
+  // pe-sqlite-for-rxdb will need InstanceCreationOptions to support additional
+  // verions of SQLite in the future.
+  _future: undefined;
+}>;

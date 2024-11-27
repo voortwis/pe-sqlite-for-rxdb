@@ -356,6 +356,7 @@ export async function createRxStoragePESQLiteInstance<RxDocType>(
   const collectionName = params.collectionName;
   const databaseName = params.databaseName;
   const internals = options.sqliteInternals;
+  const instanceOptions = params.options;
   const schema = params.schema;
 
   return Promise.resolve(
@@ -363,7 +364,7 @@ export async function createRxStoragePESQLiteInstance<RxDocType>(
       collectionName,
       databaseName,
       internals,
-      options,
+      instanceOptions,
       schema,
     ),
   );

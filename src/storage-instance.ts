@@ -18,7 +18,6 @@ import type {
   BulkWriteRow,
   EventBulk,
   FilledMangoQuery,
-  MangoQueryOperators,
   MangoQuerySelector,
   PreparedQuery,
   RxConflictResultionTask,
@@ -265,32 +264,20 @@ export class RxStoragePESQLiteInstance<RxDocType>
   }
 
   async findDocumentsById(
-    ids: Array<StringKeys<RxDocType>>,
+    ids: Array<string>,
     withDeleted: boolean,
   ): Promise<RxDocumentData<RxDocType>[]> {
     // TODO: Replace this query with a dedicated method on RxStoragePESQLiteImpl.
     const internals = await this.internals;
     let querySelector: MangoQuerySelector<RxDocumentData<RxDocType>>;
     const idsSelector: MangoQuerySelector<RxDocumentData<RxDocType>> =
-      fieldOperationValueSelector(
-        this.primaryField as StringKeys<
-          MangoQuerySelector<RxDocumentData<RxDocType>>
-        >,
-        "$in",
-        ids,
-      );
+      primaryKeysInArrayQuerySelector(this.primaryField, ids);
     if (withDeleted) {
       querySelector = idsSelector;
     } else {
       querySelector = arrayOperationValuesSelector("$and", [
         idsSelector,
-        fieldOperationValueSelector(
-          "_deleted" as StringKeys<
-            MangoQuerySelector<RxDocumentData<RxDocType>>
-          >,
-          "$eq",
-          false,
-        ),
+        notDeletedQuerySelector(),
       ]);
     }
     const filledMangoQuery: FilledMangoQuery<RxDocType> = {
@@ -370,23 +357,6 @@ export async function createRxStoragePESQLiteInstance<RxDocType>(
   );
 }
 
-type MangoQueryOperatorsKeys = keyof MangoQueryOperators<any>;
-
-function fieldOperationValueSelector<V, S>(
-  field: StringKeys<MangoQuerySelector<S>>,
-  operation: MangoQueryOperatorsKeys,
-  value: V,
-  selector?: MangoQuerySelector<S>,
-): MangoQuerySelector<S> {
-  if (selector === undefined) {
-    selector = {} as MangoQuerySelector<S>;
-  }
-  const operationSelector = {} as MangoQueryOperators<any>;
-  operationSelector[operation] = value;
-  selector[field] = operationSelector;
-  return selector;
-}
-
 function arrayOperationValuesSelector<
   V extends Array<MangoQuerySelector<S>>,
   S,
@@ -400,4 +370,23 @@ function arrayOperationValuesSelector<
   }
   selector[operation] = values;
   return selector;
+}
+
+function primaryKeysInArrayQuerySelector<RxDocType>(
+  primaryKeyField: StringKeys<RxDocumentData<RxDocType>>,
+  primaryKeyArray: Array<string>,
+): MangoQuerySelector<RxDocumentData<RxDocType>> {
+  const result = {
+    [primaryKeyField]: { $in: primaryKeyArray },
+  } as MangoQuerySelector<RxDocumentData<RxDocType>>;
+  return result;
+}
+
+function notDeletedQuerySelector<RxDocType>(): MangoQuerySelector<
+  RxDocumentData<RxDocType>
+> {
+  const result = { _deleted: { $eq: false } } as MangoQuerySelector<
+    RxDocumentData<RxDocType>
+  >;
+  return result;
 }

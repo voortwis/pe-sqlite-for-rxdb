@@ -65,6 +65,7 @@ describe("pe-sqlite-for-rxdb tests", () => {
       },
       required: ["id", "name", "done", "timestamp"],
     } as const;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const schemaTyped = toTypedRxJsonSchema(todoSchemaLiteral);
     type TodoDocType = ExtractDocumentTypeFromTypedRxJsonSchema<
       typeof schemaTyped
@@ -348,7 +349,9 @@ describe("pe-sqlite-for-rxdb tests", () => {
         resolve(changeEvent);
       });
     });
-    expect(generalSubscriptionPromise).resolves.toMatchObject({
+    const generalSubscriptionExpect = expect(
+      generalSubscriptionPromise,
+    ).resolves.toMatchObject({
       collectionName: "thing",
       isLocal: false,
       operation: "INSERT",
@@ -378,7 +381,9 @@ describe("pe-sqlite-for-rxdb tests", () => {
         resolve(updateEvent);
       });
     });
-    expect(updateSubscriptionPromise).resolves.toMatchObject({
+    const updateSubscriptionExpect = expect(
+      updateSubscriptionPromise,
+    ).resolves.toMatchObject({
       collectionName: "thing",
       isLocal: false,
       operation: "UPDATE",
@@ -393,7 +398,9 @@ describe("pe-sqlite-for-rxdb tests", () => {
         resolve(removeEvent);
       });
     });
-    expect(removeSubscriptionPromise).resolves.toMatchObject({
+    const removeSubscriptionExpect = expect(
+      removeSubscriptionPromise,
+    ).resolves.toMatchObject({
       collectionName: "thing",
       isLocal: false,
       operation: "DELETE",
@@ -424,6 +431,9 @@ describe("pe-sqlite-for-rxdb tests", () => {
     await upsertResult.remove();
     await insertSubscriptionCheck;
     await myDatabase.thing.remove();
+    await generalSubscriptionExpect;
+    await updateSubscriptionExpect;
+    await removeSubscriptionExpect;
   });
   it("can get documents by an identifier", async () => {
     // Create the RxDatabase

@@ -25,9 +25,14 @@ import type {
   StringKeys,
   TopLevelProperty,
 } from "rxdb";
-import type { ColumnMap } from "./types";
+import type {
+  ColumnMap,
+  SQLQueryOperator,
+  SupportedMangoQueryOperator,
+} from "./types";
 
 import { getPrimaryFieldOfPrimaryKey } from "rxdb";
+import { isSQLQueryOperator, isSupportedMangoQueryOperator } from "./types";
 
 // Args which our SQLiteImpl can serialize.
 export type ArgsType = Array<string | number | Buffer>;
@@ -265,68 +270,35 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
           const keyAsPath = key as Paths<RxDocumentData<RxDocType>>;
           if (key.length >= 3 && key[0] === "$") {
             // Operators
-            if (key === "$eq") {
-              conditions.push(this.operatorEquals(prefix, value));
+            if (["$eq", "$gt", "$gte"].indexOf(key) !== -1) {
+              const whereConditions =
+                this.whereConditionsWithMangoOperatorPrefixAndValue(
+                  key,
+                  prefix,
+                  value,
+                );
+              conditions.push(whereConditions);
             } else if (key === "$and" || key === "$or") {
               throw `Unable to handle key ${key} with non-Array value ${value}`;
             }
           } else if (this.columnMap.has(keyAsPath)) {
             // Found a column
             const innerPrefix = this.prefixWithChild(prefix, key);
-            conditions.push(this.operatorEquals(innerPrefix, value));
+            const whereConditions =
+              this.whereConditionsWithMangoOperatorPrefixAndValue(
+                "$eq" as const,
+                innerPrefix,
+                value,
+              );
+            conditions.push(whereConditions);
+          } else {
+            throw new Error(`Unhandled selector: ${JSON.stringify(selector)}`);
           }
         }
       }
     }
     const result = this.joinConditionsAnd(conditions);
     return result;
-  }
-
-  private operatorEquals(
-    prefix: Paths<RxDocumentData<RxDocType>>,
-    value: MangoQuerySelector<RxDocumentData<RxDocType>>,
-  ): WhereConditions {
-    const columnInfo = this.columnMap.get(prefix);
-    const valueType = typeof value;
-    if (columnInfo?.column) {
-      if (
-        (columnInfo.type === "string" && valueType === "string") ||
-        (columnInfo.type === "number" && valueType === "number") ||
-        (columnInfo.type === "boolean" && valueType === "boolean")
-      ) {
-        return {
-          condition: `${columnInfo.column} = ?`,
-          args: this.argsWithMangoQuerySelector(value),
-        };
-      } else if (valueType === "object") {
-        return this.operatorAndObject(prefix, value);
-      } else {
-        throw new Error(
-          `Type error.  Key ${prefix} is a ${columnInfo.type}.  Value ${value} is a ${typeof value}.`,
-        );
-      }
-    } else if (columnInfo?.jsonPath) {
-      if (
-        (columnInfo.type === "string" && valueType === "string") ||
-        (columnInfo.type === "number" && valueType === "number") ||
-        (columnInfo.type === "boolean" && valueType === "boolean")
-      ) {
-        const jsonTransform = valueType === "boolean" ? "->" : "->>";
-        return {
-          condition: `jsonb ${jsonTransform} '${columnInfo.jsonPath}' = ?`,
-          args: this.argsWithMangoQuerySelector(value, true),
-        };
-      } else if (valueType === "object") {
-        return this.operatorAndObject(prefix, value);
-      } else {
-        throw new Error(
-          `Type error.  Key ${prefix} is a ${columnInfo.type}.  Value ${value} is a ${valueType}.`,
-        );
-      }
-    }
-    // FIXME: need a better error
-    console.dir(this.columnMap, { depth: null });
-    throw new Error(`Unable to process query for prefix: ${prefix}`);
   }
 
   private operatorInArray(
@@ -448,5 +420,76 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
       args: whereConditions.args,
       query,
     };
+  }
+
+  private whereConditionsWithMangoOperatorPrefixAndValue(
+    operator: SupportedMangoQueryOperator | string,
+    prefix: Paths<RxDocumentData<RxDocType>>,
+    value: MangoQuerySelector<RxDocumentData<RxDocType>>,
+  ): WhereConditions {
+    if (!isSupportedMangoQueryOperator(operator)) {
+      throw new Error(`Invalid query operator: ${operator}`);
+    }
+    const queryOperator: SQLQueryOperator = {
+      $eq: "=" as const,
+      $gt: ">" as const,
+      $gte: ">=" as const,
+    }[operator];
+    return this.whereConditionsWithSQLQueryOperatorPrefixAndValue(
+      queryOperator,
+      prefix,
+      value,
+    );
+  }
+
+  private whereConditionsWithSQLQueryOperatorPrefixAndValue(
+    operator: SQLQueryOperator,
+    prefix: Paths<RxDocumentData<RxDocType>>,
+    value: MangoQuerySelector<RxDocumentData<RxDocType>>,
+  ): WhereConditions {
+    if (!isSQLQueryOperator(operator)) {
+      throw new Error(`Invalid query operator: ${operator}`);
+    }
+    const columnInfo = this.columnMap.get(prefix);
+    const valueType = typeof value;
+    if (columnInfo?.column) {
+      if (
+        (columnInfo.type === "string" && valueType === "string") ||
+        (columnInfo.type === "number" && valueType === "number") ||
+        (columnInfo.type === "boolean" && valueType === "boolean")
+      ) {
+        return {
+          condition: `${columnInfo.column} ${operator} ?`,
+          args: this.argsWithMangoQuerySelector(value),
+        };
+      } else if (valueType === "object") {
+        return this.operatorAndObject(prefix, value);
+      } else {
+        throw new Error(
+          `Type error.  Key ${prefix} is a ${columnInfo.type}.  Value ${value} is a ${typeof value}.`,
+        );
+      }
+    } else if (columnInfo?.jsonPath) {
+      if (
+        (columnInfo.type === "string" && valueType === "string") ||
+        (columnInfo.type === "number" && valueType === "number") ||
+        (columnInfo.type === "boolean" && valueType === "boolean")
+      ) {
+        const jsonTransform = valueType === "boolean" ? "->" : "->>";
+        return {
+          condition: `jsonb ${jsonTransform} '${columnInfo.jsonPath}' ${operator} ?`,
+          args: this.argsWithMangoQuerySelector(value, true),
+        };
+      } else if (valueType === "object") {
+        return this.operatorAndObject(prefix, value);
+      } else {
+        throw new Error(
+          `Type error.  Key ${prefix} is a ${columnInfo.type}.  Value ${value} is a ${valueType}.`,
+        );
+      }
+    }
+    // FIXME: need a better error
+    console.dir(this.columnMap, { depth: null });
+    throw new Error(`Unable to process query for prefix: ${prefix}`);
   }
 }

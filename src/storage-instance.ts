@@ -166,6 +166,7 @@ export class RxStoragePESQLiteInstance<RxDocType>
       RxStoragePESQLiteCheckpoint<RxDocType>
     >;
     const changeEvents = bulkChangeEvent.events;
+    const resultSuccess: Array<RxDocumentData<RxDocType>> = [];
     for (let i = 0; i < documentWrites.length; i++) {
       const write = documentWrites[i];
       const document = write.document;
@@ -194,6 +195,7 @@ export class RxStoragePESQLiteInstance<RxDocType>
           `Unexpected operation: previousDeleted: ${previousDeleted}, documentDeleted: ${documentDeleted}`,
         );
       }
+      resultSuccess.push(documentData);
       const changeEvent = {
         documentId: documentId as string,
         documentData,
@@ -212,7 +214,7 @@ export class RxStoragePESQLiteInstance<RxDocType>
     }
 
     return Promise.resolve({
-      success,
+      success: resultSuccess,
       error,
     });
   }

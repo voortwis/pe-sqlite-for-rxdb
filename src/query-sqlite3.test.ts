@@ -80,7 +80,7 @@ describe("query-sqlite3 tests", () => {
       },
     ];
     const queryBuilder = new RxStoragePESQLiteQueryBuilder(collectionSchema1);
-    expect(queryBuilder["joinConditionsAnd"](conditions)).toEqual(expected);
+    expect(queryBuilder["joinConditionsAnd"](conditions, 0)).toEqual(expected);
   });
   it("joins conditions correctly with OR", () => {
     const expected = {
@@ -102,7 +102,7 @@ describe("query-sqlite3 tests", () => {
       },
     ];
     const queryBuilder = new RxStoragePESQLiteQueryBuilder(collectionSchema1);
-    expect(queryBuilder["joinConditionsOr"](conditions)).toEqual(expected);
+    expect(queryBuilder["joinConditionsOr"](conditions, 0)).toEqual(expected);
   });
   it("can handle all kinds of ANDs", () => {
     const expected = {
@@ -195,6 +195,102 @@ describe("query-sqlite3 tests", () => {
     const query2: FilledMangoQuery<TestColor2Type> = {
       selector: { color: { $gte: "blue" } },
       sort: [{ "_meta.lwt": "desc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder2.queryAndArgsWithFilledMangoQuery(query2)).toEqual(
+      expected2,
+    );
+  });
+  it("can ask for one set of conditions OR another", () => {
+    // color is the primary key.
+    const expected1 = {
+      query: "WHERE mtime_ms > ? OR (id > ? AND mtime_ms = ?) ORDER BY id ASC",
+      args: [10, "blue", 10],
+    };
+    const queryBuilder1 = new RxStoragePESQLiteQueryBuilder(color1Schema);
+    const query1: FilledMangoQuery<TestColor1Type> = {
+      selector: {
+        $or: [
+          { "_meta.lwt": { $gt: 10 } },
+          { color: { $gt: "blue" }, _meta: { lwt: 10 } },
+        ],
+      },
+      sort: [{ color: "asc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder1.queryAndArgsWithFilledMangoQuery(query1)).toEqual(
+      expected1,
+    );
+    // Now, where color is not the primary key.
+    const expected2 = {
+      query:
+        "WHERE mtime_ms > ? OR (jsonb ->> '$.color' > ? AND mtime_ms = ?) ORDER BY jsonb ->> '$.color' DESC",
+      args: [10, "blue", 10],
+    };
+    const queryBuilder2 = new RxStoragePESQLiteQueryBuilder(color2Schema);
+    const query2: FilledMangoQuery<TestColor2Type> = {
+      selector: {
+        $or: [
+          { _meta: { lwt: { $gt: 10 } } },
+          { color: { $gt: "blue" }, "_meta.lwt": 10 },
+        ],
+      },
+      sort: [{ color: "desc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder2.queryAndArgsWithFilledMangoQuery(query2)).toEqual(
+      expected2,
+    );
+  });
+  it("can group logical expressions with parentheses", () => {
+    // color is the primary key.
+    const expected1 = {
+      query:
+        "WHERE mtime_ms > ? OR (id > ? AND mtime_ms = ?) OR (deleted = ? AND (id = ? OR id = ? OR id = ?)) ORDER BY id ASC",
+      args: [10, "blue", 10, 1, "orange", "green", "yellow"],
+    };
+    const queryBuilder1 = new RxStoragePESQLiteQueryBuilder(color1Schema);
+    const query1: FilledMangoQuery<TestColor1Type> = {
+      selector: {
+        $or: [
+          { "_meta.lwt": { $gt: 10 } },
+          { color: { $gt: "blue" }, _meta: { lwt: 10 } },
+          {
+            _deleted: true,
+            $or: [{ color: "orange" }, { color: "green" }, { color: "yellow" }],
+          },
+        ],
+      },
+      sort: [{ color: "asc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder1.queryAndArgsWithFilledMangoQuery(query1)).toEqual(
+      expected1,
+    );
+    // Because of order of operations, the top-level parentheses around the
+    // (mtime_ms > ?... OR id = ?)) are not strictly necessary.  I appreciate
+    // that they reduce the mental load on the developer.
+    const expected2 = {
+      query:
+        "WHERE (mtime_ms > ? AND (id = ? OR (id = ? AND mtime_ms >= ?) OR id = ?)) OR id = ? ORDER BY id ASC",
+      args: [10, "pink", "purple", 15, "orange", "yellow"],
+    };
+    const queryBuilder2 = new RxStoragePESQLiteQueryBuilder(color1Schema);
+    const query2: FilledMangoQuery<TestColor1Type> = {
+      selector: {
+        $or: [
+          {
+            _meta: { lwt: { $gt: 10 } },
+            $or: [
+              { color: "pink" },
+              { color: "purple", "_meta.lwt": { $gte: 15 } },
+              { color: "orange" },
+            ],
+          },
+          { color: "yellow" },
+        ],
+      },
+      sort: [{ color: "asc" as const }],
       skip: 0,
     };
     expect(queryBuilder2.queryAndArgsWithFilledMangoQuery(query2)).toEqual(

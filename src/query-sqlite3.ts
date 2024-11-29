@@ -79,7 +79,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     const rootPath = "" as Paths<RxDocumentData<RxDocType>>;
     const selector: MangoQuerySelector<RxDocumentData<RxDocType>> =
       filledMangoQuery.selector;
-    const whereConditions = this.operatorAndObject(rootPath, selector);
+    const whereConditions = this.operatorAndObject(rootPath, selector, 0);
     const orderBy = this.orderByWithFilledMangoQuery(filledMangoQuery);
     return this.queryAndArgsWithWhereConditionsAndOrderBy(
       whereConditions,
@@ -180,7 +180,10 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
   }
 
   // TODO: Combine joinConditionsAnd and joinConditionsOr using partial functions.
-  private joinConditionsAnd(conditions: WhereConditions[]): WhereConditions {
+  private joinConditionsAnd(
+    conditions: WhereConditions[],
+    logicalDepth: number,
+  ): WhereConditions {
     const allConditions: string[] = [];
     const allArgs: Array<string | number | Buffer> = [];
 
@@ -189,14 +192,20 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
       allConditions.push(condition.condition);
       allArgs.push(...condition.args);
     }
+    const leftParen = logicalDepth > 0 && conditions.length > 1 ? "(" : "";
+    const rightParen = logicalDepth > 0 && conditions.length > 1 ? ")" : "";
+    const condition = leftParen + allConditions.join(" AND ") + rightParen;
     const result: WhereConditions = {
-      condition: allConditions.join(" AND "),
+      condition,
       args: allArgs,
     };
     return result;
   }
 
-  private joinConditionsOr(conditions: WhereConditions[]): WhereConditions {
+  private joinConditionsOr(
+    conditions: WhereConditions[],
+    logicalDepth: number,
+  ): WhereConditions {
     const allConditions: string[] = [];
     const allArgs: Array<string | number | Buffer> = [];
 
@@ -205,8 +214,11 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
       allConditions.push(condition.condition);
       allArgs.push(...condition.args);
     }
+    const leftParen = logicalDepth > 0 && conditions.length > 1 ? "(" : "";
+    const rightParen = logicalDepth > 0 && conditions.length > 1 ? ")" : "";
+    const condition = leftParen + allConditions.join(" OR ") + rightParen;
     const result: WhereConditions = {
-      condition: allConditions.join(" OR "),
+      condition,
       args: allArgs,
     };
     return result;
@@ -215,6 +227,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
   private operatorAndArray(
     prefix: Paths<RxDocumentData<RxDocType>>,
     selector: MangoQuerySelector<RxDocumentData<RxDocType>>[],
+    logicalDepth: number,
   ): WhereConditions {
     const conditions: WhereConditions[] = [];
     if (Array.isArray(selector)) {
@@ -224,6 +237,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
           const innerConditions = this.operatorAndObject(
             prefix,
             currentSelector,
+            logicalDepth,
           );
           conditions.push(innerConditions);
         } else {
@@ -237,13 +251,14 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
         `operatorAndArray received a non-Array argument ${selector}`,
       );
     }
-    const result = this.joinConditionsAnd(conditions);
+    const result = this.joinConditionsAnd(conditions, logicalDepth);
     return result;
   }
 
   private operatorAndObject(
     prefix: Paths<RxDocumentData<RxDocType>>,
     selector: MangoQuerySelector<RxDocumentData<RxDocType>>,
+    logicalDepth: number,
   ): WhereConditions {
     const conditions: WhereConditions[] = [];
     for (const [key, value] of Object.entries(selector)) {
@@ -251,9 +266,13 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
         if (Array.isArray(value)) {
           if (key.length >= 3 && key[0] === "$") {
             if (key === "$and") {
-              conditions.push(this.operatorAndArray(prefix, value));
+              conditions.push(
+                this.operatorAndArray(prefix, value, logicalDepth),
+              );
             } else if (key === "$or") {
-              conditions.push(this.operatorOrArray(prefix, value));
+              conditions.push(
+                this.operatorOrArray(prefix, value, logicalDepth),
+              );
             } else if (key === "$in") {
               conditions.push(this.operatorInArray(prefix, value));
             } else {
@@ -267,37 +286,43 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
             );
           }
         } else {
-          const keyAsPath = key as Paths<RxDocumentData<RxDocType>>;
-          if (key.length >= 3 && key[0] === "$") {
-            // Operators
-            if (["$eq", "$gt", "$gte"].indexOf(key) !== -1) {
-              const whereConditions =
-                this.whereConditionsWithMangoOperatorPrefixAndValue(
-                  key,
-                  prefix,
-                  value,
-                );
-              conditions.push(whereConditions);
-            } else if (key === "$and" || key === "$or") {
-              throw `Unable to handle key ${key} with non-Array value ${value}`;
-            }
-          } else if (this.columnMap.has(keyAsPath)) {
+          const fullPath = this.prefixWithChild(prefix, key);
+          if (isSupportedMangoQueryOperator(key)) {
+            const whereConditions =
+              this.whereConditionsWithMangoOperatorPrefixAndValue(
+                key,
+                prefix,
+                value,
+                logicalDepth,
+              );
+            conditions.push(whereConditions);
+          } else if (fullPath === "$and" || fullPath === "$or") {
+            throw `Unable to handle key ${fullPath} with non-Array value ${value}`;
+          } else if (this.columnMap.has(fullPath)) {
             // Found a column
-            const innerPrefix = this.prefixWithChild(prefix, key);
             const whereConditions =
               this.whereConditionsWithMangoOperatorPrefixAndValue(
                 "$eq" as const,
-                innerPrefix,
+                fullPath,
                 value,
+                logicalDepth,
               );
             conditions.push(whereConditions);
+          } else if (typeof value === "object") {
+            conditions.push(
+              this.operatorAndObject(fullPath, value, logicalDepth),
+            );
           } else {
+            console.dir(prefix);
+            console.dir(key);
+            console.dir(value);
+            console.dir(this.columnMap);
             throw new Error(`Unhandled selector: ${JSON.stringify(selector)}`);
           }
         }
       }
     }
-    const result = this.joinConditionsAnd(conditions);
+    const result = this.joinConditionsAnd(conditions, logicalDepth);
     return result;
   }
 
@@ -338,15 +363,18 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
   private operatorOrArray(
     prefix: Paths<RxDocumentData<RxDocType>>,
     selector: MangoQuerySelector<RxDocumentData<RxDocType>>[],
+    logicalDepth: number,
   ): WhereConditions {
     const conditions: WhereConditions[] = [];
     if (Array.isArray(selector)) {
       for (let i = 0; i < selector.length; i++) {
         const currentSelector = selector[i];
         if (typeof currentSelector === "object") {
+          // logicalDepth increases on transitions between AND and OR.
           const innerConditions = this.operatorAndObject(
             prefix,
             currentSelector,
+            logicalDepth + 1,
           );
           conditions.push(innerConditions);
         } else {
@@ -360,7 +388,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
         `operatorOrArray received a non-Array argument ${selector}`,
       );
     }
-    return this.joinConditionsOr(conditions);
+    return this.joinConditionsOr(conditions, logicalDepth);
   }
 
   private orderByWithFilledMangoQuery(
@@ -426,6 +454,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     operator: SupportedMangoQueryOperator | string,
     prefix: Paths<RxDocumentData<RxDocType>>,
     value: MangoQuerySelector<RxDocumentData<RxDocType>>,
+    logicalDepth: number,
   ): WhereConditions {
     if (!isSupportedMangoQueryOperator(operator)) {
       throw new Error(`Invalid query operator: ${operator}`);
@@ -439,6 +468,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
       queryOperator,
       prefix,
       value,
+      logicalDepth,
     );
   }
 
@@ -446,6 +476,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     operator: SQLQueryOperator,
     prefix: Paths<RxDocumentData<RxDocType>>,
     value: MangoQuerySelector<RxDocumentData<RxDocType>>,
+    logicalDepth: number,
   ): WhereConditions {
     if (!isSQLQueryOperator(operator)) {
       throw new Error(`Invalid query operator: ${operator}`);
@@ -463,7 +494,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
           args: this.argsWithMangoQuerySelector(value),
         };
       } else if (valueType === "object") {
-        return this.operatorAndObject(prefix, value);
+        return this.operatorAndObject(prefix, value, logicalDepth);
       } else {
         throw new Error(
           `Type error.  Key ${prefix} is a ${columnInfo.type}.  Value ${value} is a ${typeof value}.`,
@@ -481,7 +512,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
           args: this.argsWithMangoQuerySelector(value, true),
         };
       } else if (valueType === "object") {
-        return this.operatorAndObject(prefix, value);
+        return this.operatorAndObject(prefix, value, logicalDepth);
       } else {
         throw new Error(
           `Type error.  Key ${prefix} is a ${columnInfo.type}.  Value ${value} is a ${valueType}.`,

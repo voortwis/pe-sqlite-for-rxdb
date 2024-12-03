@@ -23,7 +23,7 @@ import type { RxStoragePESQLiteInstanceCreationOptions } from "./storage-instanc
 import type { RxStoragePESQLiteInternals } from "./storage-internals";
 import type { RxStoragePESQLiteOptions } from "./storage-options";
 
-import { RXDB_VERSION } from "rxdb";
+import { ensureRxStorageInstanceParamsAreCorrect, RXDB_VERSION } from "rxdb";
 import { createRxStoragePESQLiteInstance } from "./storage-instance";
 import { getRxStoragePESQLiteOptionsWithPartial } from "./storage-options";
 
@@ -52,6 +52,10 @@ export class RxStoragePESQLite
       RxStoragePESQLiteInstanceCreationOptions
     >
   > {
+    // The documentation does not mention this function, but
+    // rx-storage-helper.ts says that it should be called at the beginning of
+    // createStorageInstance.
+    ensureRxStorageInstanceParamsAreCorrect(params);
     return createRxStoragePESQLiteInstance(params, this.options);
   }
 

@@ -225,7 +225,7 @@ export class RxStoragePESQLiteImplBetterSQLite3
           JSON.stringify(newVersionOfDocument),
           newVersionOfDocument._deleted ? 1 : 0,
           newVersionOfDocument._rev,
-          Math.floor(newVersionOfDocument._meta.lwt),
+          newVersionOfDocument._meta.lwt,
         ];
         if (previousVersionOfDocument) {
           insertArgs.push(previousVersionOfDocument._rev);
@@ -500,7 +500,7 @@ function createDocumentTableAndIndexesWithTableName(
         "\t,jsonb BLOB NOT NULL\n",
         "\t,deleted INTEGER NOT NULL\n",
         "\t,rev TEXT NOT NULL\n",
-        "\t,mtime_ms INTEGER NOT NULL\n",
+        "\t,mtime_ms REAL NOT NULL\n",
         ");",
       ].join(""),
     );

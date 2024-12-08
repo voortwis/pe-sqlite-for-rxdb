@@ -21,3 +21,7 @@ export * from "./storage-instance";
 export * from "./storage-instance-options";
 export * from "./storage-internals";
 export * from "./storage-options";
+
+import cfg from "../package.json";
+
+export const version = cfg.version;

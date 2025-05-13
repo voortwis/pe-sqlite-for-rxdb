@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Expose the current version via the `version` attribute
+- Implemented the "$lt" and "$lte" query operations
 
 ### Changed
 

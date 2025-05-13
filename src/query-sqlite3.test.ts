@@ -201,6 +201,36 @@ describe("query-sqlite3 tests", () => {
       expected2,
     );
   });
+  it("can compare values with < and <=", () => {
+    // color is the primary key.
+    const expected1 = {
+      query: "WHERE mtime_ms < ? ORDER BY id ASC",
+      args: [100],
+    };
+    const queryBuilder1 = new RxStoragePESQLiteQueryBuilder(color1Schema);
+    const query1: FilledMangoQuery<TestColor1Type> = {
+      selector: { "_meta.lwt": { $lt: 100 } },
+      sort: [{ color: "asc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder1.queryAndArgsWithFilledMangoQuery(query1)).toEqual(
+      expected1,
+    );
+    // Now, where color is not the primary key.
+    const expected2 = {
+      query: "WHERE jsonb ->> '$.color' <= ? ORDER BY mtime_ms DESC",
+      args: ["blue"],
+    };
+    const queryBuilder2 = new RxStoragePESQLiteQueryBuilder(color2Schema);
+    const query2: FilledMangoQuery<TestColor2Type> = {
+      selector: { color: { $lte: "blue" } },
+      sort: [{ "_meta.lwt": "desc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder2.queryAndArgsWithFilledMangoQuery(query2)).toEqual(
+      expected2,
+    );
+  });
   it("can ask for one set of conditions OR another", () => {
     // color is the primary key.
     const expected1 = {
@@ -246,7 +276,7 @@ describe("query-sqlite3 tests", () => {
     // color is the primary key.
     const expected1 = {
       query:
-        "WHERE mtime_ms > ? OR (id > ? AND mtime_ms = ?) OR (deleted = ? AND (id = ? OR id = ? OR id = ?)) ORDER BY id ASC",
+        "WHERE mtime_ms > ? OR (id > ? AND mtime_ms = ?) OR (deleted = ? AND (id <= ? OR id = ? OR id = ?)) ORDER BY id ASC",
       args: [10, "blue", 10, 1, "orange", "green", "yellow"],
     };
     const queryBuilder1 = new RxStoragePESQLiteQueryBuilder(color1Schema);
@@ -257,7 +287,11 @@ describe("query-sqlite3 tests", () => {
           { color: { $gt: "blue" }, _meta: { lwt: 10 } },
           {
             _deleted: true,
-            $or: [{ color: "orange" }, { color: "green" }, { color: "yellow" }],
+            $or: [
+              { color: { $lte: "orange" } },
+              { color: "green" },
+              { color: "yellow" },
+            ],
           },
         ],
       },

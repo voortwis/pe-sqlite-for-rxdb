@@ -39,18 +39,35 @@ export type DocumentIdGetter<RxDocType> = (
   document: RxDocType,
 ) => RxDocType[StringKeys<RxDocType>];
 
-export type SQLQueryOperator = "=" | ">" | ">=";
+export type SQLQueryOperator = "=" | ">" | ">=" | "<" | "<=";
 
 export function isSQLQueryOperator(
   probably: unknown,
 ): probably is SQLQueryOperator {
-  return probably === "=" || probably === ">" || probably === ">=";
+  return (
+    probably === "=" ||
+    probably === ">" ||
+    probably === ">=" ||
+    probably === "<" ||
+    probably === "<="
+  );
 }
 
-export type SupportedMangoQueryOperator = "$eq" | "$gt" | "$gte";
+export type SupportedMangoQueryOperator =
+  | "$eq"
+  | "$gt"
+  | "$gte"
+  | "$lt"
+  | "$lte";
 
 export function isSupportedMangoQueryOperator(
   probably: unknown,
 ): probably is SupportedMangoQueryOperator {
-  return probably === "$eq" || probably === "$gt" || probably === "$gte";
+  return (
+    probably === "$eq" ||
+    probably === "$gt" ||
+    probably === "$gte" ||
+    probably === "$lt" ||
+    probably === "$lte"
+  );
 }

@@ -3,13 +3,23 @@ import { defineConfig } from "vite";
 import dts from "vite-plugin-dts";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
 
+type ModuleFormat = "es" | "cjs" | "umd" | "iife";
+
+const libEntry = resolve(__dirname, "src/lib.ts");
+const storageImplBetterSQLite3Entry = resolve(
+  __dirname,
+  "src/storage-impl-better-sqlite3.ts",
+);
+
 export default defineConfig({
   build: {
     lib: {
-      entry: resolve(__dirname, "src/lib.ts"),
+      entry: [libEntry, storageImplBetterSQLite3Entry],
       name: "pe-sqlite-for-rxdb",
       formats: ["es"],
-      fileName: "pe-sqlite-for-rxdb",
+      fileName: (format: ModuleFormat, entryName: string): string => {
+        return `${entryName}.js`;
+      },
     },
     rollupOptions: {
       external: [

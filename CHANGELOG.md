@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Expose the current version via the `version` attribute
 - Implemented the "$lt" and "$lte" query operations
+- Export the 'storage-impl-better-sqlite3' module
 
 ### Changed
 

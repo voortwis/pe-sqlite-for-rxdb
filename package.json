@@ -10,8 +10,12 @@
   "license": "AGPL-3.0-or-later",
   "exports": {
     ".": {
-      "default": "./dist/pe-sqlite-for-rxdb.js",
-      "types": "./dist/pe-sqlite-for-rxdb.d.ts"
+      "default": "./dist/lib.js",
+      "types": "./dist/lib.d.ts"
+    },
+    "./storage-impl-better-sqlite3": {
+      "default": "./dist/storage-impl-better-sqlite3.js",
+      "types": "./dist/storage-impl-better-sqlite3.d.ts"
     }
   },
   "devDependencies": {

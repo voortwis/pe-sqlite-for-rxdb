@@ -8,16 +8,6 @@
     "url": "https://github.com/pineapple-electric/pe-sqlite-for-rxdb"
   },
   "license": "AGPL-3.0-or-later",
-  "exports": {
-    ".": {
-      "default": "./dist/lib.js",
-      "types": "./dist/lib.d.ts"
-    },
-    "./storage-impl-better-sqlite3": {
-      "default": "./dist/storage-impl-better-sqlite3.js",
-      "types": "./dist/storage-impl-better-sqlite3.d.ts"
-    }
-  },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "acorn": "^8.14.0",
@@ -34,6 +24,22 @@
     "vite-plugin-node-polyfills": "^0.22.0",
     "vitest": "^2.1.5"
   },
+  "exports": {
+    ".": {
+      "default": "./dist/lib.js",
+      "types": "./dist/lib.d.ts"
+    },
+    "./storage-impl-better-sqlite3": {
+      "default": "./dist/storage-impl-better-sqlite3.js",
+      "types": "./dist/storage-impl-better-sqlite3.d.ts"
+    }
+  },
+  "files": [
+    "COPYING",
+    "README.md",
+    "dist",
+    "package.json"
+  ],
   "peerDependencies": {
     "better-sqlite3": "^11.3.0",
     "rxdb": "^15.19.0",
@@ -52,11 +58,5 @@
     "prepare": "husky",
     "test": "vitest --run --typecheck"
   },
-  "type": "module",
-  "files": [
-    "COPYING",
-    "README.md",
-    "dist",
-    "package.json"
-  ]
+  "type": "module"
 }

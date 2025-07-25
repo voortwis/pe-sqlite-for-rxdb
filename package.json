@@ -9,29 +9,29 @@
   },
   "license": "AGPL-3.0-or-later",
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
-    "acorn": "^8.14.0",
-    "eslint": "^9.15.0",
-    "eslint-config-prettier": "^9.1.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "acorn": "^8.15.0",
+    "eslint": "^9.31.0",
+    "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
-    "lint-staged": "^15.2.10",
-    "prettier": "^3.3.3",
+    "lint-staged": "^16.1.2",
+    "prettier": "^3.6.2",
     "rimraf": "^6.0.1",
-    "typescript": "^5.7.2",
-    "typescript-eslint": "^8.16.0",
-    "vite": "^5.4.11",
-    "vite-plugin-dts": "^4.3.0",
-    "vite-plugin-node-polyfills": "^0.22.0",
-    "vitest": "^2.1.5"
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.38.0",
+    "vite": "^7.0.6",
+    "vite-plugin-dts": "^4.5.4",
+    "vite-plugin-node-polyfills": "^0.24.0",
+    "vitest": "^3.2.4"
   },
   "exports": {
     ".": {
-      "default": "./dist/lib.js",
-      "types": "./dist/lib.d.ts"
+      "types": "./dist/lib.d.ts",
+      "default": "./dist/lib.js"
     },
     "./storage-impl-better-sqlite3": {
-      "default": "./dist/storage-impl-better-sqlite3.js",
-      "types": "./dist/storage-impl-better-sqlite3.d.ts"
+      "types": "./dist/storage-impl-better-sqlite3.d.ts",
+      "default": "./dist/storage-impl-better-sqlite3.js"
     }
   },
   "files": [
@@ -41,14 +41,18 @@
     "package.json"
   ],
   "peerDependencies": {
-    "better-sqlite3": "^11.3.0",
+    "better-sqlite3": "^12.2.0",
     "rxdb": "^15.19.0",
     "rxjs": "^7.8.0"
   },
   "pnpm": {
     "overrides": {
       "ws": ">=8.17.1"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild"
+    ]
   },
   "scripts": {
     "clean": "rimraf dist pe-sqlite-for-rxdb-*.tgz",
@@ -58,5 +62,8 @@
     "prepare": "husky",
     "test": "vitest --run --typecheck"
   },
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@eslint/js": "^9.31.0"
+  }
 }

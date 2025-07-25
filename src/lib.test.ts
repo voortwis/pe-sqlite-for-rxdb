@@ -194,7 +194,7 @@ describe("pe-sqlite-for-rxdb tests", () => {
     expect(myDatabase).toBeTruthy();
     expect(myDatabase.storage).toBeTruthy();
     const betterSQLite3Storage = myDatabase.storage as RxStoragePESQLite;
-    expect(betterSQLite3Storage.whichBackend()).resolves.toEqual(
+    await expect(betterSQLite3Storage.whichBackend()).resolves.toEqual(
       "better-sqlite3",
     );
   });

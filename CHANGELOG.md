@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Used type information with esLint
 
+### Fixed
+
+- Paths passed to RxStoragePESQLiteImplBetterSQLite3 are no longer ignored
+
 ## [0.1.4]
 
 ### Added

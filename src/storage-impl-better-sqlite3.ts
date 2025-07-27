@@ -391,14 +391,13 @@ export class RxStoragePESQLiteImplBetterSQLite3
     const result = databaseName + ".sqlite3";
     if (this.fileName === undefined) {
       this.fileName = result;
+    } else if (path.basename(this.fileName, ".sqlite3") === databaseName) {
+      return this.fileName;
     } else {
-      const baseName = path.basename(this.fileName, ".sqlite3");
-      if (baseName !== databaseName) {
-        const baseNamePlusExt = path.basename(this.fileName);
-        throw new Error(
-          `Database name ${databaseName} + .sqlite3 must match the filename ${baseNamePlusExt}`,
-        );
-      }
+      const baseNamePlusExt = path.basename(this.fileName);
+      throw new Error(
+        `Database name ${databaseName} + .sqlite3 must match the filename ${baseNamePlusExt}`,
+      );
     }
     return result;
   }

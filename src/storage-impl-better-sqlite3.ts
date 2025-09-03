@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import type { Database as DatabaseInterface } from "better-sqlite3";
 import type {
   BulkWriteRow,
   FilledMangoQuery,
@@ -30,10 +31,7 @@ import type { RxStoragePESQLiteImpl } from "./storage-impl";
 import type { BulkWriteResponse, DocumentIdGetter } from "./types";
 
 import { default as path } from "node:path";
-import {
-  default as openDatabase,
-  Database as DatabaseInterface,
-} from "better-sqlite3";
+import { default as openDatabase } from "better-sqlite3";
 import { defaultHashSha256 } from "rxdb";
 import { RxStoragePESQLiteQueryBuilder } from "./query-sqlite3";
 

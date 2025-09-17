@@ -465,6 +465,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
       $gte: ">=" as const,
       $lt: "<" as const,
       $lte: "<=" as const,
+      $ne: "<>" as const,
     }[operator];
     return this.whereConditionsWithSQLQueryOperatorPrefixAndValue(
       queryOperator,

@@ -49,7 +49,8 @@ export function isSQLQueryOperator(
     probably === ">" ||
     probably === ">=" ||
     probably === "<" ||
-    probably === "<="
+    probably === "<=" ||
+    probably === "<>"
   );
 }
 

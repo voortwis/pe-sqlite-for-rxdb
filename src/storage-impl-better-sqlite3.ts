@@ -1,5 +1,5 @@
 // pe-sqlite-for-rxdb
-// Copyright 2024 Pineapple Electric LLC
+// Copyright 2024, 2025 Pineapple Electric LLC
 //
 // This program is free software: you can redistribute it and/or modify it
 // under the terms of the GNU Affero General Public License as published by the
@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import type { Database as DatabaseInterface } from "better-sqlite3";
 import type {
   BulkWriteRow,
   FilledMangoQuery,
@@ -30,13 +31,14 @@ import type { RxStoragePESQLiteImpl } from "./storage-impl";
 import type { BulkWriteResponse, DocumentIdGetter } from "./types";
 
 import { default as path } from "node:path";
-import {
-  default as openDatabase,
-  Database as DatabaseInterface,
-} from "better-sqlite3";
+import { default as openDatabase } from "better-sqlite3";
 import { defaultHashSha256 } from "rxdb";
 import { RxStoragePESQLiteQueryBuilder } from "./query-sqlite3";
+import { assertIsSQLite3TableName } from "./sqlite3";
 
+// Our longest index has a length of 16 characters + tableName.
+// SQLite3 supports names of up to 128 characters.
+const MAX_TABLE_NAME_LENGTH = 128 - 16;
 const RXDB_INTERNAL_TABLE = "_rxdb_internal";
 
 function isInternalStoreDocType<DocType>(
@@ -195,7 +197,7 @@ export class RxStoragePESQLiteImplBetterSQLite3
         const previousVersionOfDocument = currentWrite.previous;
 
         const sqlPart1 = [
-          `INSERT INTO ${tableName}(\n`,
+          `INSERT INTO '${tableName}'(\n`,
           "\tid\n",
           "\t,jsonb\n",
           "\t,deleted\n",
@@ -254,7 +256,7 @@ export class RxStoragePESQLiteImplBetterSQLite3
               err.message === "UNIQUE constraint failed: " + tableName + ".id"
             ) {
               const sqlString2 = [
-                `SELECT json(jsonb) AS json FROM ${tableName}\n`,
+                `SELECT json(jsonb) AS json FROM '${tableName}'\n`,
                 "WHERE id = ?",
               ].join("");
               const sql2 = connection.prepare(sqlString2);
@@ -339,7 +341,7 @@ export class RxStoragePESQLiteImplBetterSQLite3
     const sql1 = this.connection().prepare(
       [
         "SELECT id, json(jsonb) AS json, deleted, rev, mtime_ms\n",
-        `FROM ${tableName}\n`,
+        `FROM '${tableName}'\n`,
         queryAndArgs.query,
       ].join(""),
     );
@@ -354,7 +356,7 @@ export class RxStoragePESQLiteImplBetterSQLite3
     // Drop the collection_collectionName table.
     const tableName = this.tableNameWithCollectionName(collectionName);
     try {
-      const sql1 = this.connection().prepare(`DROP TABLE ${tableName};`);
+      const sql1 = this.connection().prepare(`DROP TABLE '${tableName}';`);
       sql1.run([]);
       return Promise.resolve();
     } catch (err: unknown) {
@@ -453,17 +455,19 @@ export class RxStoragePESQLiteImplBetterSQLite3
   }
 
   private tableNameWithCollectionName(collectionName: string): string {
-    if (collectionName === "_rxdb_internal") {
-      return collectionName;
+    let tableName: string;
+    if (collectionName === RXDB_INTERNAL_TABLE) {
+      tableName = RXDB_INTERNAL_TABLE;
+    } else {
+      tableName = "collection_" + collectionName;
     }
-    // This comes from the RxDB RxCollection documentation.
-    const collectionNameRegexp = /^[a-z][a-z0-9]*$/;
-    if (collectionNameRegexp.exec(collectionName) === null) {
+    if (tableName.length > MAX_TABLE_NAME_LENGTH) {
       throw new Error(
-        `Collection name ${collectionName} does not match the desired pattern.`,
+        `TableName ${tableName} contains ${tableName.length} characters, which exceeds the allowable size (${MAX_TABLE_NAME_LENGTH} characters)`,
       );
     }
-    return "collection_" + collectionName;
+    assertIsSQLite3TableName(tableName);
+    return tableName;
   }
 }
 
@@ -481,20 +485,17 @@ function createDocumentTableAndIndexesWithTableName(
   if (!connection || !connection.open) {
     throw new Error("No database connection");
   }
-  const tableNameRegexp = /[a-zA-Z_]\w*/;
-  if (
-    tableNameRegexp.exec(tableName) === null &&
-    tableName !== RXDB_INTERNAL_TABLE
-  ) {
+  if (tableName.length > MAX_TABLE_NAME_LENGTH) {
     throw new Error(
-      `Table name ${tableName} does not match the desired pattern.`,
+      `TableName ${tableName} contains ${tableName.length} characters, which exceeds the allowable size (${MAX_TABLE_NAME_LENGTH} characters)`,
     );
   }
+  assertIsSQLite3TableName(tableName);
 
   try {
     const sql1 = connection.prepare(
       [
-        "CREATE TABLE " + tableName + "(\n",
+        "CREATE TABLE '" + tableName + "'(\n",
         "\tid TEXT PRIMARY KEY NOT NULL\n",
         "\t,jsonb BLOB NOT NULL\n",
         "\t,deleted INTEGER NOT NULL\n",
@@ -507,7 +508,7 @@ function createDocumentTableAndIndexesWithTableName(
     sql1.run();
   } catch (err: unknown) {
     if (isSqliteError(err)) {
-      if (err.message !== "table " + tableName + " already exists") {
+      if (err.message !== "table '" + tableName + "' already exists") {
         throw err;
       }
     }
@@ -515,7 +516,7 @@ function createDocumentTableAndIndexesWithTableName(
   try {
     const sql2 = connection.prepare(
       [
-        "CREATE INDEX idx_" + tableName + "_deleted_id\n",
+        "CREATE INDEX 'idx_" + tableName + "_deleted_id'\n",
         "\tON " + tableName + "(deleted, id);",
       ].join(""),
     );
@@ -533,7 +534,7 @@ function createDocumentTableAndIndexesWithTableName(
   try {
     const sql3 = connection.prepare(
       [
-        "CREATE INDEX idx_" + tableName + "_mtime_ms_id\n",
+        "CREATE INDEX 'idx_" + tableName + "_mtime_ms_id'\n",
         "\tON " + tableName + "(mtime_ms, id);",
       ].join(""),
     );

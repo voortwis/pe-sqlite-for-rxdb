@@ -1,6 +1,6 @@
 {
   "name": "pe-sqlite-for-rxdb",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Pineapple Electric SQLite RxStorage for RxDB",
   "author": "Pineapple Electric LLC",
   "repository": {

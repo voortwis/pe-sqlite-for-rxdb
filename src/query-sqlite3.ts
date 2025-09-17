@@ -18,7 +18,6 @@ import type {
   JsonSchema,
   FilledMangoQuery,
   MangoQuerySelector,
-  MangoQuerySortPart,
   Paths,
   RxDocumentData,
   RxJsonSchema,
@@ -38,25 +37,27 @@ import {
 } from "./types";
 
 // Args which our SQLiteImpl can serialize.
-export type ArgsType = Array<string | number | Buffer>;
+type ArgsType = string | null | number | Buffer;
+export type ArgsArrayType = ArgsType[];
 
 export interface OrderByClause {
   clause: string;
 }
 
 export interface QueryAndArgs {
-  args: ArgsType;
+  args: ArgsArrayType;
   query: string;
 }
 
 export interface WhereConditions {
   condition: string;
-  args: ArgsType;
+  args: ArgsArrayType;
 }
 
-type DocumentProperties<T> = {
-  [key in StringKeys<T>]: JsonSchema<T> | TopLevelProperty;
-};
+type DocumentProperties<T> = Record<
+  StringKeys<T>,
+  JsonSchema<T> | TopLevelProperty
+>;
 
 export class RxStoragePESQLiteQueryBuilder<RxDocType> {
   private _columnMap?: ColumnMap<RxDocumentData<RxDocType>>;
@@ -92,8 +93,8 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
 
   private argsWithMangoQuerySelector(
     querySelector: MangoQuerySelector<RxDocumentData<RxDocType>>,
-    booleanAsText: boolean = false,
-  ): ArgsType {
+    booleanAsText = false,
+  ): ArgsArrayType {
     if (typeof querySelector === "boolean") {
       if (booleanAsText) {
         return [querySelector === true ? "true" : "false"];
@@ -109,7 +110,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
       return [null];
     }
     throw new Error(
-      `Query selector ${querySelector.toString()} cannot be converted to query arguments`,
+      `Query selector ${JSON.stringify(querySelector)} cannot be converted to query arguments`,
     );
   }
 
@@ -190,10 +191,9 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     logicalDepth: number,
   ): WhereConditions {
     const allConditions: string[] = [];
-    const allArgs: Array<string | number | Buffer> = [];
+    const allArgs: ArgsArrayType = [];
 
-    for (let i = 0; i < conditions.length; i++) {
-      const condition = conditions[i];
+    for (const condition of conditions) {
       allConditions.push(condition.condition);
       allArgs.push(...condition.args);
     }
@@ -212,10 +212,9 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     logicalDepth: number,
   ): WhereConditions {
     const allConditions: string[] = [];
-    const allArgs: Array<string | number | Buffer> = [];
+    const allArgs: ArgsArrayType = [];
 
-    for (let i = 0; i < conditions.length; i++) {
-      const condition = conditions[i];
+    for (const condition of conditions) {
       allConditions.push(condition.condition);
       allArgs.push(...condition.args);
     }
@@ -235,26 +234,21 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     logicalDepth: number,
   ): WhereConditions {
     const conditions: WhereConditions[] = [];
-    if (Array.isArray(selector)) {
-      for (let i = 0; i < selector.length; i++) {
-        const currentSelector = selector[i];
-        if (typeof currentSelector === "object") {
-          const innerConditions = this.operatorAndObject(
-            prefix,
-            currentSelector,
-            logicalDepth,
-          );
-          conditions.push(innerConditions);
-        } else {
-          throw new Error(
-            `Every member of an $and array must be an object: selector[${i}] = ${currentSelector}`,
-          );
-        }
+    for (let i = 0; i < selector.length; i++) {
+      const currentSelector = selector[i];
+      try {
+        const innerConditions = this.operatorAndObject(
+          prefix,
+          currentSelector,
+          logicalDepth,
+        );
+        conditions.push(innerConditions);
+      } catch (err: unknown) {
+        throw new Error(
+          `Failed to create SQL conditions with ${JSON.stringify(selector)}[${i}] = ${JSON.stringify(currentSelector)}`,
+          { cause: err },
+        );
       }
-    } else {
-      throw new Error(
-        `operatorAndArray received a non-Array argument ${selector}`,
-      );
     }
     const result = this.joinConditionsAnd(conditions, logicalDepth);
     return result;
@@ -267,65 +261,63 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
   ): WhereConditions {
     const conditions: WhereConditions[] = [];
     for (const [key, value] of Object.entries(selector)) {
-      if (typeof key === "string") {
-        if (Array.isArray(value)) {
-          if (key.length >= 3 && key[0] === "$") {
-            if (key === "$and") {
-              conditions.push(
-                this.operatorAndArray(prefix, value, logicalDepth),
-              );
-            } else if (key === "$or") {
-              conditions.push(
-                this.operatorOrArray(prefix, value, logicalDepth),
-              );
-            } else if (key === "$in") {
-              conditions.push(this.operatorInArray(prefix, value));
-             } else if (key === "$nin") {
-              conditions.push(this.operatorNinArray(prefix, value));
-            } else {
-              throw new Error(
-                `1.Unable to handle key ${key} with value Array ${value}`,
-              );
-            }
+      if (Array.isArray(value)) {
+        if (key.length >= 3 && key.startsWith("$")) {
+          if (key === "$and") {
+            conditions.push(this.operatorAndArray(prefix, value, logicalDepth));
+          } else if (key === "$in") {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            conditions.push(this.operatorInArray(prefix, value as any[]));
+          } else if (key === "$nin") {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            conditions.push(this.operatorNinArray(prefix, value as any[]));
+          } else if (key === "$or") {
+            conditions.push(this.operatorOrArray(prefix, value, logicalDepth));
           } else {
             throw new Error(
-              `2.Unable to handle key ${key} with value Array ${value}`,
+              `1.Unable to handle key ${key} with value Array ${JSON.stringify(value)}`,
             );
           }
         } else {
-          const fullPath = this.prefixWithChild(prefix, key);
-          if (isSupportedMangoQueryOperator(key)) {
-            const whereConditions =
-              this.whereConditionsWithMangoOperatorPrefixAndValue(
-                key,
-                prefix,
-                value,
-                logicalDepth,
-              );
-            conditions.push(whereConditions);
-          } else if (fullPath === "$and" || fullPath === "$or") {
-            throw `Unable to handle key ${fullPath} with non-Array value ${value}`;
-          } else if (this.columnMap.has(fullPath)) {
-            // Found a column
-            const whereConditions =
-              this.whereConditionsWithMangoOperatorPrefixAndValue(
-                "$eq" as const,
-                fullPath,
-                value,
-                logicalDepth,
-              );
-            conditions.push(whereConditions);
-          } else if (typeof value === "object") {
-            conditions.push(
-              this.operatorAndObject(fullPath, value, logicalDepth),
+          throw new Error(
+            `2.Unable to handle key ${key} with value Array ${JSON.stringify(value)}`,
+          );
+        }
+      } else {
+        const fullPath = this.prefixWithChild(prefix, key);
+        if (isComparisonMangoQueryOperator(key)) {
+          const whereConditions =
+            this.whereConditionsWithMangoOperatorPrefixAndValue(
+              key,
+              prefix,
+              value,
+              logicalDepth,
             );
-          } else {
-            console.dir(prefix);
-            console.dir(key);
-            console.dir(value);
-            console.dir(this.columnMap);
-            throw new Error(`Unhandled selector: ${JSON.stringify(selector)}`);
-          }
+          conditions.push(whereConditions);
+        } else if (fullPath === "$and" || fullPath === "$or") {
+          throw new Error(
+            `Unable to handle key ${fullPath} with non-Array value ${JSON.stringify(value)}`,
+          );
+        } else if (this.columnMap.has(fullPath)) {
+          // Found a column
+          const whereConditions =
+            this.whereConditionsWithMangoOperatorPrefixAndValue(
+              "$eq" as const,
+              fullPath,
+              value,
+              logicalDepth,
+            );
+          conditions.push(whereConditions);
+        } else if (typeof value === "object") {
+          conditions.push(
+            this.operatorAndObject(fullPath, value, logicalDepth),
+          );
+        } else {
+          console.dir(prefix);
+          console.dir(key);
+          console.dir(value);
+          console.dir(this.columnMap);
+          throw new Error(`Unhandled selector: ${JSON.stringify(selector)}`);
         }
       }
     }
@@ -335,12 +327,9 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
 
   private operatorInArray(
     prefix: Paths<RxDocumentData<RxDocType>>,
-    selector: MangoQuerySelector<RxDocumentData<RxDocType>>[],
+    selector: any[], // eslint-disable-line @typescript-eslint/no-explicit-any
     inArray = true,
   ): WhereConditions {
-    if (!Array.isArray(selector)) {
-      throw new Error(`Operator $in requires an array argument: ${selector}`);
-    }
     // Use this function for 'IN' and 'NOT IN' queries.
     inArray = inArray === false ? false : true;
     const columnInfo = this.columnMap.get(prefix);
@@ -364,9 +353,10 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     }
     const questionMarks = selector.map(() => "?").join(", ");
     const args = selector.map(
-      (currentSelector) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (currentSelector: any) =>
         this.argsWithMangoQuerySelector(
-          currentSelector,
+          currentSelector as MangoQuerySelector<RxDocumentData<RxDocType>>,
           !!columnInfo?.jsonPath,
         )[0],
     );
@@ -380,7 +370,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
 
   private operatorNinArray(
     prefix: Paths<RxDocumentData<RxDocType>>,
-    selector: MangoQuerySelector<RxDocumentData<RxDocType>>[],
+    selector: any[], // eslint-disable-line @typescript-eslint/no-explicit-any
   ): WhereConditions {
     const inArray = false;
     return this.operatorInArray(prefix, selector, inArray);
@@ -392,27 +382,22 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     logicalDepth: number,
   ): WhereConditions {
     const conditions: WhereConditions[] = [];
-    if (Array.isArray(selector)) {
-      for (let i = 0; i < selector.length; i++) {
-        const currentSelector = selector[i];
-        if (typeof currentSelector === "object") {
-          // logicalDepth increases on transitions between AND and OR.
-          const innerConditions = this.operatorAndObject(
-            prefix,
-            currentSelector,
-            logicalDepth + 1,
-          );
-          conditions.push(innerConditions);
-        } else {
-          throw new Error(
-            `Every member of an $or array must be an object: selector[${i}] = ${currentSelector}`,
-          );
-        }
+    for (let i = 0; i < selector.length; i++) {
+      const currentSelector = selector[i];
+      try {
+        // logicalDepth increases on transitions between AND and OR.
+        const innerConditions = this.operatorAndObject(
+          prefix,
+          currentSelector,
+          logicalDepth + 1,
+        );
+        conditions.push(innerConditions);
+      } catch (err: unknown) {
+        throw new Error(
+          `Failed to create SQL conditions with ${JSON.stringify(selector)}[${i}] = ${JSON.stringify(currentSelector)}`,
+          { cause: err },
+        );
       }
-    } else {
-      throw new Error(
-        `operatorOrArray received a non-Array argument ${selector}`,
-      );
     }
     return this.joinConditionsOr(conditions, logicalDepth);
   }
@@ -421,9 +406,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     filledMangoQuery: FilledMangoQuery<RxDocType>,
   ): OrderByClause {
     const parts: string[] = [];
-    for (let i = 0; i < filledMangoQuery.sort.length; i++) {
-      const sortKey: MangoQuerySortPart<RxDocumentData<RxDocType>> =
-        filledMangoQuery.sort[i];
+    for (const sortKey of filledMangoQuery.sort) {
       for (const [k, value] of Object.entries(sortKey)) {
         const key = k as Paths<RxDocumentData<RxDocType>>;
         const columnInfo = this.columnMap.get(key);
@@ -535,7 +518,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
         return this.operatorAndObject(prefix, value, logicalDepth);
       } else {
         throw new Error(
-          `Type error.  Key ${prefix} is a ${columnInfo.type}.  Value ${value} is a ${typeof value}.`,
+          `Type error.  Key ${prefix} is a ${columnInfo.type}.  Value ${JSON.stringify(value)} is a ${typeof value}.`,
         );
       }
     } else if (columnInfo?.jsonPath) {
@@ -562,7 +545,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
         return this.operatorAndObject(prefix, value, logicalDepth);
       } else {
         throw new Error(
-          `Type error.  Key ${prefix} is a ${columnInfo.type}.  Value ${value} is a ${valueType}.`,
+          `Type error.  Key ${prefix} is a ${columnInfo.type}.  Value ${JSON.stringify(value)} is a ${valueType}.`,
         );
       }
     }

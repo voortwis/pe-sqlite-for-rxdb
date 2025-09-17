@@ -22,10 +22,10 @@ import type {
   StringKeys,
 } from "rxdb";
 
-export type BulkWriteResponse<RxDocType> = {
+export interface BulkWriteResponse<RxDocType> {
   success: Map<RxDocType[StringKeys<RxDocType>], RxDocumentData<RxDocType>>;
-  error: Array<RxStorageWriteError<RxDocType>>;
-};
+  error: RxStorageWriteError<RxDocType>[];
+}
 
 export interface ColumnInformation {
   column?: string;

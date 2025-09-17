@@ -35,15 +35,44 @@ export interface ColumnInformation {
 
 export type ColumnMap<T> = Map<Paths<T>, ColumnInformation>;
 
+export type ComparisonMangoQueryOperator =
+  | "$eq"
+  | "$gt"
+  | "$gte"
+  | "$lt"
+  | "$lte"
+  | "$ne";
+
+export function isComparisonMangoQueryOperator(
+  probably: unknown,
+): probably is ComparisonMangoQueryOperator {
+  return (
+    probably === "$eq" ||
+    probably === "$gt" ||
+    probably === "$gte" ||
+    probably === "$lt" ||
+    probably === "$lte" ||
+    probably === "$ne"
+  );
+}
+
 export type DocumentIdGetter<RxDocType> = (
   document: RxDocType,
 ) => RxDocType[StringKeys<RxDocType>];
 
-export type SQLQueryOperator = "=" | ">" | ">=" | "<" | "<=";
+export type MembershipMangoQueryOperator = "$in" | "$nin";
 
-export function isSQLQueryOperator(
+export function isMembershipMangoQueryOperator(
   probably: unknown,
-): probably is SQLQueryOperator {
+): probably is MembershipMangoQueryOperator {
+  return probably === "$in" || probably === "$nin";
+}
+
+export type ComparisonSQLQueryOperator = "=" | ">" | ">=" | "<" | "<=" | "<>";
+
+export function isComparisonSQLQueryOperator(
+  probably: unknown,
+): probably is ComparisonSQLQueryOperator {
   return (
     probably === "=" ||
     probably === ">" ||
@@ -55,20 +84,14 @@ export function isSQLQueryOperator(
 }
 
 export type SupportedMangoQueryOperator =
-  | "$eq"
-  | "$gt"
-  | "$gte"
-  | "$lt"
-  | "$lte";
+  | ComparisonMangoQueryOperator
+  | MembershipMangoQueryOperator;
 
 export function isSupportedMangoQueryOperator(
   probably: unknown,
 ): probably is SupportedMangoQueryOperator {
   return (
-    probably === "$eq" ||
-    probably === "$gt" ||
-    probably === "$gte" ||
-    probably === "$lt" ||
-    probably === "$lte"
+    isComparisonMangoQueryOperator(probably) ||
+    isMembershipMangoQueryOperator(probably)
   );
 }

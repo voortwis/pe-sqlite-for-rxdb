@@ -27,12 +27,15 @@ import type {
 } from "rxdb";
 import type {
   ColumnMap,
-  SQLQueryOperator,
-  SupportedMangoQueryOperator,
+  ComparisonMangoQueryOperator,
+  ComparisonSQLQueryOperator,
 } from "./types";
 
 import { getPrimaryFieldOfPrimaryKey } from "rxdb";
-import { isSQLQueryOperator, isSupportedMangoQueryOperator } from "./types";
+import {
+  isComparisonSQLQueryOperator,
+  isComparisonMangoQueryOperator,
+} from "./types";
 
 // Args which our SQLiteImpl can serialize.
 export type ArgsType = Array<string | number | Buffer>;
@@ -474,15 +477,15 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
   }
 
   private whereConditionsWithMangoOperatorPrefixAndValue(
-    operator: SupportedMangoQueryOperator | string,
+    operator: ComparisonMangoQueryOperator,
     prefix: Paths<RxDocumentData<RxDocType>>,
     value: MangoQuerySelector<RxDocumentData<RxDocType>>,
     logicalDepth: number,
   ): WhereConditions {
-    if (!isSupportedMangoQueryOperator(operator)) {
+    if (!isComparisonMangoQueryOperator(operator)) {
       throw new Error(`Invalid query operator: ${operator}`);
     }
-    const queryOperator: SQLQueryOperator = {
+    const queryOperator: ComparisonSQLQueryOperator = {
       $eq: "=" as const,
       $gt: ">" as const,
       $gte: ">=" as const,
@@ -490,7 +493,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
       $lte: "<=" as const,
       $ne: "<>" as const,
     }[operator];
-    return this.whereConditionsWithSQLQueryOperatorPrefixAndValue(
+    return this.whereConditionsWithComparisonSQLQueryOperatorPrefixAndValue(
       queryOperator,
       prefix,
       value,
@@ -498,13 +501,13 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     );
   }
 
-  private whereConditionsWithSQLQueryOperatorPrefixAndValue(
-    operator: SQLQueryOperator,
+  private whereConditionsWithComparisonSQLQueryOperatorPrefixAndValue(
+    operator: ComparisonSQLQueryOperator,
     prefix: Paths<RxDocumentData<RxDocType>>,
     value: MangoQuerySelector<RxDocumentData<RxDocType>>,
     logicalDepth: number,
   ): WhereConditions {
-    if (!isSQLQueryOperator(operator)) {
+    if (!isComparisonSQLQueryOperator(operator)) {
       throw new Error(`Invalid query operator: ${operator}`);
     }
     const columnInfo = this.columnMap.get(prefix);

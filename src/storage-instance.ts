@@ -225,7 +225,6 @@ export class RxStoragePESQLiteInstance<RxDocType>
       RxStoragePESQLiteCheckpoint<RxDocType>
     >
   > {
-    console.log(`changeStream(collection=${this.collectionName})`);
     return this.changes$.asObservable();
   }
 

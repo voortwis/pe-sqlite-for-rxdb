@@ -377,6 +377,53 @@ describe("query-sqlite3 tests", () => {
       expected2,
     );
   });
+  it("can correctly query with null", () => {
+    const expected1 = {
+      query:
+        "WHERE jsonb ->> '$.date' NOT IN (?, ?) AND jsonb ->> '$.date' IS NOT NULL ORDER BY jsonb ->> '$.date' DESC",
+      args: ["today", 42],
+    };
+    const queryBuilder1 = new RxStoragePESQLiteQueryBuilder(date1Schema);
+    const query1: FilledMangoQuery<TestDate1Type> = {
+      selector: { date: { $nin: [null, "today", 42] } },
+      sort: [{ date: "desc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder1.queryAndArgsWithFilledMangoQuery(query1)).toEqual(
+      expected1,
+    );
+    const expected2 = {
+      query: "WHERE deleted = ? AND mtime_ms IS NOT NULL ORDER BY id ASC",
+      args: [0],
+    };
+    const queryBuilder2 = new RxStoragePESQLiteQueryBuilder(color1Schema);
+    const query2: FilledMangoQuery<TestColor1Type> = {
+      selector: {
+        $and: [{ _deleted: false }, { "_meta.lwt": { $ne: null } }],
+      },
+      sort: [{ color: "asc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder2.queryAndArgsWithFilledMangoQuery(query2)).toEqual(
+      expected2,
+    );
+    const expected3 = {
+      query:
+        "WHERE deleted = ? AND jsonb ->> '$.color' IS NOT NULL ORDER BY jsonb ->> '$.color' ASC",
+      args: [0],
+    };
+    const queryBuilder3 = new RxStoragePESQLiteQueryBuilder(color2Schema);
+    const query3: FilledMangoQuery<TestColor2Type> = {
+      selector: {
+        $and: [{ _deleted: { $eq: false } }, { color: { $ne: null } }],
+      },
+      sort: [{ color: "asc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder3.queryAndArgsWithFilledMangoQuery(query3)).toEqual(
+      expected3,
+    );
+  });
 });
 
 interface TestRxDocType1 {

@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Implement the "$ne" query operation
 - Implement the "$nin" query operation
 
+### Fixed
+
+- Fixed handling of null in $in, $nin, $eq and $ne query operations
+
 ## [0.1.6]
 
 ### Fixed

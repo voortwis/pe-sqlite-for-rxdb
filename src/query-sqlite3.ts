@@ -102,6 +102,8 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
       typeof querySelector === "string"
     ) {
       return [querySelector];
+    } else if (querySelector === null) {
+      return [null];
     }
     throw new Error(
       `Query selector ${querySelector.toString()} cannot be converted to query arguments`,
@@ -350,6 +352,13 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
       console.dir(this.columnMap);
       throw new Error(`Query prefix ${prefix} not present in columnMap`);
     }
+    let postcondition = "";
+    // If null is present in selector, it needs its own condition.
+    if (selector.includes(null)) {
+      selector = selector.filter((element: unknown) => element !== null);
+      const is = inArray ? "IS" : "IS NOT";
+      postcondition = ` AND ${left} ${is} NULL`;
+    }
     const questionMarks = selector.map(() => "?").join(", ");
     const args = selector.map(
       (currentSelector) =>
@@ -360,7 +369,7 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
     );
     const in_: string = inArray ? "IN" : "NOT IN";
     const result: WhereConditions = {
-      condition: `${left} ${in_} (${questionMarks})`,
+      condition: `${left} ${in_} (${questionMarks})${postcondition}`,
       args,
     };
     return result;
@@ -510,6 +519,15 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
           condition: `${columnInfo.column} ${operator} ?`,
           args: this.argsWithMangoQuerySelector(value),
         };
+      } else if (value === null) {
+        if (operator !== "=" && operator !== "<>") {
+          throw new Error(`Invalid comparison with null value: ${operator}`);
+        }
+        const not_ = operator === "<>" ? " NOT" : "";
+        return {
+          condition: `${columnInfo.column} IS${not_} NULL`,
+          args: [],
+        };
       } else if (valueType === "object") {
         return this.operatorAndObject(prefix, value, logicalDepth);
       } else {
@@ -527,6 +545,15 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
         return {
           condition: `jsonb ${jsonTransform} '${columnInfo.jsonPath}' ${operator} ?`,
           args: this.argsWithMangoQuerySelector(value, true),
+        };
+      } else if (value === null) {
+        if (operator !== "=" && operator !== "<>") {
+          throw new Error(`Invalid comparison with null value: ${operator}`);
+        }
+        const not_ = operator === "<>" ? " NOT" : "";
+        return {
+          condition: `jsonb ->> '${columnInfo.jsonPath}' IS${not_} NULL`,
+          args: [],
         };
       } else if (valueType === "object") {
         return this.operatorAndObject(prefix, value, logicalDepth);

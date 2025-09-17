@@ -201,6 +201,22 @@ describe("query-sqlite3 tests", () => {
       expected2,
     );
   });
+  it("can query values NOT IN an array", () => {
+    const expected1 = {
+      query:
+        "WHERE jsonb ->> '$.date' NOT IN (?, ?) ORDER BY jsonb ->> '$.date' ASC",
+      args: ["today", 42],
+    };
+    const queryBuilder1 = new RxStoragePESQLiteQueryBuilder(date1Schema);
+    const query1: FilledMangoQuery<TestDate1Type> = {
+      selector: { date: { $nin: ["today", 42] } },
+      sort: [{ date: "asc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder1.queryAndArgsWithFilledMangoQuery(query1)).toEqual(
+      expected1,
+    );
+  });
   it("can compare values with > and >=", () => {
     // color is the primary key.
     const expected1 = {
@@ -595,6 +611,46 @@ const color2Schema: RxJsonSchema<RxDocumentData<TestColor2Type>> = {
     ["_meta.lwt", "pk"],
   ],
   required: ["color", "_deleted", "pk", "_rev", "_meta", "_attachments"],
+  additionalProperties: false,
+  sharding: { shards: 1, mode: "collection" },
+  keyCompression: false,
+  encrypted: [],
+};
+
+interface TestDate1Type {
+  id: string;
+  date: string;
+}
+
+const date1Schema: RxJsonSchema<RxDocumentData<TestDate1Type>> = {
+  version: 0,
+  primaryKey: "id",
+  type: "object",
+  properties: {
+    _attachments: { type: "object" },
+    _deleted: { type: "boolean" },
+    _meta: {
+      additionalProperties: true,
+      properties: {
+        lwt: {
+          maximum: 1000000000000000,
+          minimum: 1,
+          multipleOf: 0.01,
+          type: "number",
+        },
+      },
+      required: ["lwt"],
+      type: "object",
+    },
+    _rev: { minLength: 1, type: "string" },
+    date: { type: "string", maxLength: 11 }, // Y10k ready
+    id: { type: "string", maxLength: 10 },
+  },
+  indexes: [
+    ["_deleted", "pk"],
+    ["_meta.lwt", "pk"],
+  ],
+  required: ["date", "_deleted", "id", "_rev", "_meta", "_attachments"],
   additionalProperties: false,
   sharding: { shards: 1, mode: "collection" },
   keyCompression: false,

@@ -275,6 +275,8 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
               );
             } else if (key === "$in") {
               conditions.push(this.operatorInArray(prefix, value));
+             } else if (key === "$nin") {
+              conditions.push(this.operatorNinArray(prefix, value));
             } else {
               throw new Error(
                 `1.Unable to handle key ${key} with value Array ${value}`,
@@ -329,10 +331,13 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
   private operatorInArray(
     prefix: Paths<RxDocumentData<RxDocType>>,
     selector: MangoQuerySelector<RxDocumentData<RxDocType>>[],
+    inArray = true,
   ): WhereConditions {
     if (!Array.isArray(selector)) {
       throw new Error(`Operator $in requires an array argument: ${selector}`);
     }
+    // Use this function for 'IN' and 'NOT IN' queries.
+    inArray = inArray === false ? false : true;
     const columnInfo = this.columnMap.get(prefix);
     let left: string;
     if (columnInfo?.column) {
@@ -353,11 +358,20 @@ export class RxStoragePESQLiteQueryBuilder<RxDocType> {
           !!columnInfo?.jsonPath,
         )[0],
     );
+    const in_: string = inArray ? "IN" : "NOT IN";
     const result: WhereConditions = {
-      condition: `${left} IN (${questionMarks})`,
+      condition: `${left} ${in_} (${questionMarks})`,
       args,
     };
     return result;
+  }
+
+  private operatorNinArray(
+    prefix: Paths<RxDocumentData<RxDocType>>,
+    selector: MangoQuerySelector<RxDocumentData<RxDocType>>[],
+  ): WhereConditions {
+    const inArray = false;
+    return this.operatorInArray(prefix, selector, inArray);
   }
 
   private operatorOrArray(

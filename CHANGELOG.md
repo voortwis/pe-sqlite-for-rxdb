@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Implemented the "$ne" query operation
+- Implement the "$ne" query operation
+- Implement the "$nin" query operation
 
 ## [0.1.6]
 

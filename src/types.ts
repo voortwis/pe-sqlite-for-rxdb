@@ -22,10 +22,10 @@ import type {
   StringKeys,
 } from "rxdb";
 
-export type BulkWriteResponse<RxDocType> = {
+export interface BulkWriteResponse<RxDocType> {
   success: Map<RxDocType[StringKeys<RxDocType>], RxDocumentData<RxDocType>>;
-  error: Array<RxStorageWriteError<RxDocType>>;
-};
+  error: RxStorageWriteError<RxDocType>[];
+}
 
 export interface ColumnInformation {
   column?: string;
@@ -35,39 +35,63 @@ export interface ColumnInformation {
 
 export type ColumnMap<T> = Map<Paths<T>, ColumnInformation>;
 
-export type DocumentIdGetter<RxDocType> = (
-  document: RxDocType,
-) => RxDocType[StringKeys<RxDocType>];
-
-export type SQLQueryOperator = "=" | ">" | ">=" | "<" | "<=";
-
-export function isSQLQueryOperator(
-  probably: unknown,
-): probably is SQLQueryOperator {
-  return (
-    probably === "=" ||
-    probably === ">" ||
-    probably === ">=" ||
-    probably === "<" ||
-    probably === "<="
-  );
-}
-
-export type SupportedMangoQueryOperator =
+export type ComparisonMangoQueryOperator =
   | "$eq"
   | "$gt"
   | "$gte"
   | "$lt"
-  | "$lte";
+  | "$lte"
+  | "$ne";
 
-export function isSupportedMangoQueryOperator(
+export function isComparisonMangoQueryOperator(
   probably: unknown,
-): probably is SupportedMangoQueryOperator {
+): probably is ComparisonMangoQueryOperator {
   return (
     probably === "$eq" ||
     probably === "$gt" ||
     probably === "$gte" ||
     probably === "$lt" ||
-    probably === "$lte"
+    probably === "$lte" ||
+    probably === "$ne"
+  );
+}
+
+export type DocumentIdGetter<RxDocType> = (
+  document: RxDocType,
+) => RxDocType[StringKeys<RxDocType>];
+
+export type MembershipMangoQueryOperator = "$in" | "$nin";
+
+export function isMembershipMangoQueryOperator(
+  probably: unknown,
+): probably is MembershipMangoQueryOperator {
+  return probably === "$in" || probably === "$nin";
+}
+
+export type ComparisonSQLQueryOperator = "=" | ">" | ">=" | "<" | "<=" | "<>";
+
+export function isComparisonSQLQueryOperator(
+  probably: unknown,
+): probably is ComparisonSQLQueryOperator {
+  return (
+    probably === "=" ||
+    probably === ">" ||
+    probably === ">=" ||
+    probably === "<" ||
+    probably === "<=" ||
+    probably === "<>"
+  );
+}
+
+export type SupportedMangoQueryOperator =
+  | ComparisonMangoQueryOperator
+  | MembershipMangoQueryOperator;
+
+export function isSupportedMangoQueryOperator(
+  probably: unknown,
+): probably is SupportedMangoQueryOperator {
+  return (
+    isComparisonMangoQueryOperator(probably) ||
+    isMembershipMangoQueryOperator(probably)
   );
 }

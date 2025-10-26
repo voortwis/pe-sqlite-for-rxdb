@@ -140,6 +140,36 @@ describe("query-sqlite3 tests", () => {
       expected,
     );
   });
+  it("can perform not-equal queries", () => {
+    // color is the primary key.
+    const expected1 = {
+      query: "WHERE id <> ? ORDER BY id ASC",
+      args: ["green"],
+    };
+    const queryBuilder1 = new RxStoragePESQLiteQueryBuilder(color1Schema);
+    const query1: FilledMangoQuery<TestColor1Type> = {
+      selector: { color: { $ne: "green" } },
+      sort: [{ color: "asc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder1.queryAndArgsWithFilledMangoQuery(query1)).toEqual(
+      expected1,
+    );
+    // Now, where color is not the primary key.
+    const expected2 = {
+      query: "WHERE jsonb ->> '$.color' <> ? ORDER BY jsonb ->> '$.color' DESC",
+      args: ["red"],
+    };
+    const queryBuilder2 = new RxStoragePESQLiteQueryBuilder(color2Schema);
+    const query2: FilledMangoQuery<TestColor2Type> = {
+      selector: { color: { $ne: "red" } },
+      sort: [{ color: "desc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder2.queryAndArgsWithFilledMangoQuery(query2)).toEqual(
+      expected2,
+    );
+  });
   it("can query values IN an array", () => {
     // color is the primary key.
     const expected1 = {
@@ -169,6 +199,22 @@ describe("query-sqlite3 tests", () => {
     };
     expect(queryBuilder2.queryAndArgsWithFilledMangoQuery(query2)).toEqual(
       expected2,
+    );
+  });
+  it("can query values NOT IN an array", () => {
+    const expected1 = {
+      query:
+        "WHERE jsonb ->> '$.date' NOT IN (?, ?) ORDER BY jsonb ->> '$.date' ASC",
+      args: ["today", 42],
+    };
+    const queryBuilder1 = new RxStoragePESQLiteQueryBuilder(date1Schema);
+    const query1: FilledMangoQuery<TestDate1Type> = {
+      selector: { date: { $nin: ["today", 42] } },
+      sort: [{ date: "asc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder1.queryAndArgsWithFilledMangoQuery(query1)).toEqual(
+      expected1,
     );
   });
   it("can compare values with > and >=", () => {
@@ -329,6 +375,53 @@ describe("query-sqlite3 tests", () => {
     };
     expect(queryBuilder2.queryAndArgsWithFilledMangoQuery(query2)).toEqual(
       expected2,
+    );
+  });
+  it("can correctly query with null", () => {
+    const expected1 = {
+      query:
+        "WHERE jsonb ->> '$.date' NOT IN (?, ?) AND jsonb ->> '$.date' IS NOT NULL ORDER BY jsonb ->> '$.date' DESC",
+      args: ["today", 42],
+    };
+    const queryBuilder1 = new RxStoragePESQLiteQueryBuilder(date1Schema);
+    const query1: FilledMangoQuery<TestDate1Type> = {
+      selector: { date: { $nin: [null, "today", 42] } },
+      sort: [{ date: "desc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder1.queryAndArgsWithFilledMangoQuery(query1)).toEqual(
+      expected1,
+    );
+    const expected2 = {
+      query: "WHERE deleted = ? AND mtime_ms IS NOT NULL ORDER BY id ASC",
+      args: [0],
+    };
+    const queryBuilder2 = new RxStoragePESQLiteQueryBuilder(color1Schema);
+    const query2: FilledMangoQuery<TestColor1Type> = {
+      selector: {
+        $and: [{ _deleted: false }, { "_meta.lwt": { $ne: null } }],
+      },
+      sort: [{ color: "asc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder2.queryAndArgsWithFilledMangoQuery(query2)).toEqual(
+      expected2,
+    );
+    const expected3 = {
+      query:
+        "WHERE deleted = ? AND jsonb ->> '$.color' IS NOT NULL ORDER BY jsonb ->> '$.color' ASC",
+      args: [0],
+    };
+    const queryBuilder3 = new RxStoragePESQLiteQueryBuilder(color2Schema);
+    const query3: FilledMangoQuery<TestColor2Type> = {
+      selector: {
+        $and: [{ _deleted: { $eq: false } }, { color: { $ne: null } }],
+      },
+      sort: [{ color: "asc" as const }],
+      skip: 0,
+    };
+    expect(queryBuilder3.queryAndArgsWithFilledMangoQuery(query3)).toEqual(
+      expected3,
     );
   });
 });
@@ -565,6 +658,46 @@ const color2Schema: RxJsonSchema<RxDocumentData<TestColor2Type>> = {
     ["_meta.lwt", "pk"],
   ],
   required: ["color", "_deleted", "pk", "_rev", "_meta", "_attachments"],
+  additionalProperties: false,
+  sharding: { shards: 1, mode: "collection" },
+  keyCompression: false,
+  encrypted: [],
+};
+
+interface TestDate1Type {
+  id: string;
+  date: string;
+}
+
+const date1Schema: RxJsonSchema<RxDocumentData<TestDate1Type>> = {
+  version: 0,
+  primaryKey: "id",
+  type: "object",
+  properties: {
+    _attachments: { type: "object" },
+    _deleted: { type: "boolean" },
+    _meta: {
+      additionalProperties: true,
+      properties: {
+        lwt: {
+          maximum: 1000000000000000,
+          minimum: 1,
+          multipleOf: 0.01,
+          type: "number",
+        },
+      },
+      required: ["lwt"],
+      type: "object",
+    },
+    _rev: { minLength: 1, type: "string" },
+    date: { type: "string", maxLength: 11 }, // Y10k ready
+    id: { type: "string", maxLength: 10 },
+  },
+  indexes: [
+    ["_deleted", "pk"],
+    ["_meta.lwt", "pk"],
+  ],
+  required: ["date", "_deleted", "id", "_rev", "_meta", "_attachments"],
   additionalProperties: false,
   sharding: { shards: 1, mode: "collection" },
   keyCompression: false,
